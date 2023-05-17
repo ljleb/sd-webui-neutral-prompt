@@ -6,20 +6,18 @@ from modules import scripts, processing, script_callbacks, sd_samplers_kdiffusio
 is_enabled = False
 
 
-def combine_denoise_hijack(self, x_out, conds_list, neg_cond, cond_scale):
+def combine_denoise_hijack(self, x_out, conds_list, neg_cond, cond_scale, origin_cond):
     if not is_enabled:
-        return original_combine_denoise(self, x_out, conds_list, neg_cond, cond_scale)
+        return original_combine_denoise(self, x_out, conds_list, neg_cond, cond_scale, origin_cond)
 
     denoised_uncond = x_out[-neg_cond.shape[0]:]
     denoised = torch.clone(denoised_uncond)
 
     for i, conds in enumerate(conds_list):
         for cond_index, weight in conds:
-            perp = get_perpendicular_component(x_out[cond_index], denoised_uncond[i])
-            perp = x_out[cond_index] - perp
-            denoised[i] += perp * (weight * cond_scale)
+            perp = origin_cond + get_perpendicular_component(x_out[cond_index] - origin_cond, denoised_uncond[i] - origin_cond)
+            denoised[i] += (x_out[cond_index] - perp) * (weight * cond_scale)
 
-    assert not torch.isnan(denoised).any(), "this is not triggered but a1111 still blows up"
     return denoised
 
 
