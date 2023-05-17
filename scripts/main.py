@@ -6,9 +6,10 @@ from modules import scripts, processing, script_callbacks, sd_samplers_kdiffusio
 is_enabled = False
 
 
-def combine_denoise_hijack(self, x_out, conds_list, neg_cond, cond_scale, origin_cond):
-    if not is_enabled:
-        return original_combine_denoise(self, x_out, conds_list, neg_cond, cond_scale, origin_cond)
+def combine_denoise_hijack(self, x_out, conds_list, neg_cond, cond_scale, origin_cond=None):
+    if not is_enabled or origin_cond is None:
+        extra_args = [origin_cond] * (0 if origin_cond is None else 1)
+        return original_combine_denoise(self, x_out, conds_list, neg_cond, cond_scale, *extra_args)
 
     denoised_uncond = x_out[-neg_cond.shape[0]:]
     denoised = torch.clone(denoised_uncond)
