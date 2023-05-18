@@ -12,8 +12,8 @@ cfg_rescale = 0
 
 
 def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
-    global is_enabled, cfg_rescale
-    if not is_enabled:
+    global is_enabled, cfg_rescale, perp_profile
+    if not is_enabled or perp_profile is None:
         return original_combine_denoise(self, x_out, conds_list, uncond, cond_scale)
 
     x_uncond = x_out[-uncond.shape[0]:]
@@ -77,26 +77,43 @@ script_callbacks.on_script_unloaded(on_script_unloaded)
 
 
 class NeutralPromptScript(scripts.Script):
+    def __init__(self):
+        self.txt2img_prompt_textbox = None
+        self.img2img_prompt_textbox = None
+
     def title(self) -> str:
         return "Neutral Prompt"
 
     def show(self, is_img2img: bool):
         return scripts.AlwaysVisible
 
+    def after_component(self, component, **kwargs):
+        if getattr(component, 'elem_id', None) == 'txt2img_prompt':
+            self.txt2img_prompt_textbox = component
+
+        if getattr(component, 'elem_id', None) == 'img2img_prompt':
+            self.img2img_prompt_textbox = component
+
     def ui(self, is_img2img: bool) -> List[gr.components.Component]:
+        prompt_textbox = self.img2img_prompt_textbox if is_img2img else self.txt2img_prompt_textbox
+
         with gr.Accordion(label='Neutral Prompt', open=False):
             ui_enabled = gr.Checkbox(label='Enable', value=False)
-            ui_neutral_prompt = gr.Textbox(label='Neutral prompt ', show_label=False, lines=3, placeholder='Neutral prompt')
-            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG ', minimum=-3, maximum=0, value=-1)
-            ui_cfg_rescale = gr.Slider(label='CFG Rescale ', minimum=0, maximum=1, value=0)
+            ui_cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0)
+            with gr.Accordion(label='Prompt formatter', open=False):
+                neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (will be added to the positive prompt textbox)')
+                neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=3, value=-1)
+                append_to_prompt = gr.Button(value='Apply to prompt')
 
-        return [ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
+            append_to_prompt.click(
+                fn=lambda init_prompt, prompt, scale: (f'{init_prompt} AND_PERP {prompt} :{scale}', ''),
+                inputs=[prompt_textbox, neutral_prompt, neutral_cond_scale],
+                outputs=[prompt_textbox, neutral_prompt]
+            )
 
-    def process(self, p: processing.StableDiffusionProcessing, ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
+        return [ui_enabled, ui_cfg_rescale]
+
+    def process(self, p: processing.StableDiffusionProcessing, ui_enabled, ui_cfg_rescale):
         global is_enabled, cfg_rescale
         is_enabled = ui_enabled
         cfg_rescale = ui_cfg_rescale
-
-        if ui_neutral_prompt:
-            for i in range(len(p.all_prompts)):
-                p.all_prompts[i] = f'{p.all_prompts[i]} AND_PERP {ui_neutral_prompt} :{ui_neutral_cond_scale}'
