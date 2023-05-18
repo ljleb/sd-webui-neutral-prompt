@@ -27,7 +27,7 @@ def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
             x_pos = x_out[cond_index]
             x_pos_std += torch.std(x_pos)
             x_pos_delta = x_pos - x_uncond[i]
-            x_cfg = x_pos_delta - neutral_cond_scale * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
+            x_cfg = x_pos_delta + neutral_cond_scale * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
             denoised[i] += x_cfg * (weight * cond_scale)
 
     x_cfg_std = torch.std(denoised)
@@ -91,7 +91,7 @@ class NeutralPromptScript(scripts.Script):
         with gr.Accordion(label='Neutral Prompt', open=False):
             ui_neutral_prompt = gr.Textbox(label='Neutral prompt ', show_label=False, lines=3, placeholder='Neutral prompt')
             ui_neutral_cond_scale = gr.Slider(label='Neutral CFG ', minimum=-3, maximum=0, value=1)
-            ui_cfg_rescale = gr.Slider(label='CFG Rescale ', minimum=0, maximum=1, value=1)
+            ui_cfg_rescale = gr.Slider(label='CFG Rescale ', minimum=0, maximum=1, value=0)
 
         return [ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
 
