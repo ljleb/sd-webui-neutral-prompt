@@ -1,4 +1,4 @@
-# sd-webui-neutral-prompt
+# Neutral Prompt
 
 Neutral prompt is an a1111 webui extension that replaces the webui's CFG denoising algorithm with a higher-quality implementation based on more recent research.
 
@@ -7,7 +7,7 @@ Neutral prompt is an a1111 webui extension that replaces the webui's CFG denoisi
 - [Perp-Neg](https://perp-neg.github.io/) cfg algorithm
 - standard deviation based CFG rescaling (https://arxiv.org/abs/2305.08891)
 
-## Special mentions
+## Special Mentions
 
 Special thanks to these people for helping make this extension possible:
 
