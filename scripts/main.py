@@ -14,22 +14,22 @@ def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
     if not is_enabled:
         return original_combine_denoise(self, x_out, conds_list, uncond, cond_scale)
 
-    x_neutral = x_out[conds_list[0][0][0]]
     x_uncond = x_out[-uncond.shape[0]:]
     denoised = torch.clone(x_uncond)
 
-    del conds_list[0][0]
+    for i, (conds, keywords) in enumerate(zip(conds_list, perp_profile)):
+        x_pos = torch.zeros_like(denoised[i])
+        for keyword, (cond_index, weight) in [k for k in zip(keywords, conds) if k[0] == 'AND']:
+            x_pos += weight * x_out[cond_index]
 
-    for i, conds in enumerate(conds_list):
-        x_pos_acc = torch.zeros_like(x_uncond[i])
-        for cond_index, weight in conds:
-            x_pos = x_out[cond_index]
-            x_pos_acc += x_pos
+        x_delta_acc = torch.zeros_like(denoised[i])
+        for keyword, (cond_index, weight) in [k for k in zip(keywords, conds) if k[0] == 'AND_PERP']:
+            x_neutral = x_out[cond_index]
             x_pos_delta = x_pos - x_uncond[i]
-            x_cfg = x_pos_delta + neutral_cond_scale * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
-            denoised[i] += x_cfg * (weight * cond_scale)
+            x_delta_acc += weight * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
 
-        x_pos_std = torch.std(x_pos_acc)
+        denoised[i] += cond_scale * (x_pos - x_uncond[i] - x_delta_acc)
+        x_pos_std = torch.std(x_pos)
         x_cfg_std = torch.std(denoised[i])
         denoised[i] *= cfg_rescale * (x_pos_std / x_cfg_std - 1) + 1
 
@@ -47,19 +47,16 @@ def get_perpendicular_component(pos, neg):
 
 
 def get_multicond_learned_conditioning_hijack(model, prompts, steps):
-    global is_enabled
+    global is_enabled, perp_profile
     if not is_enabled:
         return original_get_multicond_learned_conditioning(model, prompts, steps)
 
+    perp_profile = []
     for prompt in prompts:
-        split_prompt = re.split(r'\b(AND(?:_PERP)?|^\s*PERP)\b', prompt)
-        for keyword, sub_prompt in zip(split_prompt[1::2], split_prompt[2::2]):
-            if keyword != 'AND_PERP':
-                continue
+        and_keywords = re.split(r'\b(AND(?:_PERP)?)\b', prompt)[1::2]
+        perp_profile.append(['AND'] + and_keywords)
 
-
-
-    new_prompts = [re.sub(r'\bAND_PERP\b', 'AND', prompt) for prompt in prompts]
+    new_prompts = [re.sub(r'\b(AND(?:_PERP)?)\b', 'AND', prompt).replace('\n', ' ') for prompt in prompts]
     return original_get_multicond_learned_conditioning(model, new_prompts, steps)
 
 
@@ -76,14 +73,6 @@ def on_script_unloaded():
 script_callbacks.on_script_unloaded(on_script_unloaded)
 
 
-def on_ui_settings():
-    section = ('neutral-prompt', 'Neutral Prompt')
-    shared.opts.add_option('neutral_prompt_enabled', shared.OptionInfo(True, 'Enabled', section=section))
-
-
-script_callbacks.on_ui_settings(on_ui_settings)
-
-
 class NeutralPromptScript(scripts.Script):
     def title(self) -> str:
         return "Neutral Prompt"
@@ -93,15 +82,16 @@ class NeutralPromptScript(scripts.Script):
 
     def ui(self, is_img2img):
         with gr.Accordion(label='Neutral Prompt', open=False):
-            ui_neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt')
-            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=0, value=1)
-            ui_cfg_rescale = gr.Slider(label='CFG Rescale', minimum=0, maximum=1, value=0)
+            ui_enabled = gr.Checkbox(label='Enable', value=False)
+            ui_neutral_prompt = gr.Textbox(label='Neutral prompt ', show_label=False, lines=3, placeholder='Neutral prompt')
+            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG ', minimum=-3, maximum=0, value=-1)
+            ui_cfg_rescale = gr.Slider(label='CFG Rescale ', minimum=0, maximum=1, value=0)
 
-        return [ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
+        return [ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
 
-    def process(self, p: processing.StableDiffusionProcessing, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
+    def process(self, p: processing.StableDiffusionProcessing, ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
         global is_enabled, neutral_prompt, neutral_cond_scale, cfg_rescale
-        is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
+        is_enabled = ui_enabled
         neutral_prompt = ui_neutral_prompt
         neutral_cond_scale = ui_neutral_cond_scale
         cfg_rescale = ui_cfg_rescale
