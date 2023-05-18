@@ -10,7 +10,7 @@ from modules import scripts, processing
 
 class NeutralPromptScript(scripts.Script):
     def __init__(self):
-        self.ui = ui.GradioUserInterface()
+        self.gui = ui.GradioUserInterface()
 
     def title(self) -> str:
         return "Neutral Prompt"
@@ -19,9 +19,9 @@ class NeutralPromptScript(scripts.Script):
         return scripts.AlwaysVisible
 
     def ui(self, is_img2img: bool):
-        self.ui.arrange_components()
-        self.ui.connect_events()
-        return self.ui.get_processing_components()
+        self.gui.arrange_components(is_img2img)
+        self.gui.connect_events(is_img2img)
+        return self.gui.get_processing_components()
 
     def process(self, p: processing.StableDiffusionProcessing, *args):
-        self.ui.update_global_state(*args)
+        self.gui.on_process(*args)
