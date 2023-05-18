@@ -49,9 +49,9 @@ def combine_epsilon_deltas(x_out, cond, uncond, keywords, keyword_cond_pairs):
     return epsilon_delta
 
 
-def get_perpendicular_component(vector, neutral):
-    assert vector.shape == neutral.shape
-    return neutral * torch.sum(neutral * vector) / torch.norm(neutral) ** 2
+def get_perpendicular_component(normal, vector):
+    assert vector.shape == normal.shape
+    return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
 
 
 def get_cfg_rescale_factor(denoised, positive_epsilon):
