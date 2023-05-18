@@ -82,7 +82,7 @@ class NeutralPromptScript(scripts.Script):
     def ui(self, is_img2img):
         with gr.Accordion(label='Neutral Prompt', open=False):
             ui_neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt')
-            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-30, maximum=30)
+            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=0, maximum=2, value=1)
 
         return [ui_neutral_prompt, ui_neutral_cond_scale]
 
