@@ -1,31 +1,53 @@
 from typing import List
 
 import torch
-from modules import scripts, processing, prompt_parser, script_callbacks, sd_samplers_kdiffusion, shared
+from modules import scripts, processing, prompt_parser, script_callbacks, sd_samplers_kdiffusion
+from lib_neutral_prompt import hijacker
 import gradio as gr
 import re
 
 
+prompt_parser_hijacker = hijacker.ModuleHijacker.install_or_get(
+    module=prompt_parser,
+    hijacker_attribute='__neutral_prompt',
+    register_uninstall=script_callbacks.on_script_unloaded,
+)
+cfg_denoiser_hijacker = hijacker.ModuleHijacker.install_or_get(
+    module=sd_samplers_kdiffusion.CFGDenoiser,
+    hijacker_attribute='__neutral_prompt',
+    register_uninstall=script_callbacks.on_script_unloaded,
+)
+
+
+AND_KEYWORD = 'AND'
+AND_PERP_KEYWORD = 'AND_PERP'
+
+
 is_enabled = False
-perp_profile = None
+perp_profile = []
 cfg_rescale = 0
 
 
-def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
+@cfg_denoiser_hijacker.hijack('combine_denoised')
+def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale, original_function):
     global is_enabled, cfg_rescale, perp_profile
-    if not is_enabled or perp_profile is None:
-        return original_combine_denoise(self, x_out, conds_list, uncond, cond_scale)
+    if not is_enabled or not perp_profile:
+        return original_function(self, x_out, conds_list, uncond, cond_scale)
 
     x_uncond = x_out[-uncond.shape[0]:]
     denoised = torch.clone(x_uncond)
 
     for i, (conds, keywords) in enumerate(zip(conds_list, perp_profile)):
+        keyword_cond_pairs = list(zip(keywords, conds))
+
         x_pos = torch.zeros_like(denoised[i])
-        for keyword, (cond_index, weight) in [k for k in zip(keywords, conds) if k[0] == 'AND']:
+        and_indices = [i for i, k in enumerate(keywords) if k == AND_KEYWORD]
+        for keyword, (cond_index, weight) in [keyword_cond_pairs[i] for i in and_indices]:
             x_pos += weight * x_out[cond_index]
 
         x_delta_acc = torch.zeros_like(denoised[i])
-        for keyword, (cond_index, weight) in [k for k in zip(keywords, conds) if k[0] == 'AND_PERP']:
+        and_perp_indices = [i for i, k in enumerate(keywords) if k == AND_PERP_KEYWORD]
+        for keyword, (cond_index, weight) in [keyword_cond_pairs[i] for i in and_perp_indices]:
             x_neutral = x_out[cond_index]
             x_pos_delta = x_pos - x_uncond[i]
             x_delta_acc -= weight * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
@@ -38,42 +60,28 @@ def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
     return denoised
 
 
-original_combine_denoise = getattr(sd_samplers_kdiffusion.CFGDenoiser, '__neutral_prompt_original_combine_denoise', sd_samplers_kdiffusion.CFGDenoiser.combine_denoised)
-setattr(sd_samplers_kdiffusion.CFGDenoiser, '__neutral_prompt_original_combine_denoise', original_combine_denoise)
-sd_samplers_kdiffusion.CFGDenoiser.combine_denoised = combine_denoise_hijack
+def get_perpendicular_component(vector, neutral):
+    assert vector.shape == neutral.shape
+    return neutral * torch.sum(neutral * vector) / torch.norm(neutral) ** 2
 
 
-def get_perpendicular_component(pos, neg):
-    projected_neg = pos * torch.sum(neg * pos) / torch.norm(pos) ** 2
-    return neg - projected_neg
+and_perp_regex = re.compile(fr'\b({AND_KEYWORD}|{AND_PERP_KEYWORD})\b')
 
 
-def get_multicond_learned_conditioning_hijack(model, prompts, steps):
+@prompt_parser_hijacker.hijack('get_multicond_learned_conditioning')
+def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_function):
     global is_enabled, perp_profile
     if not is_enabled:
-        return original_get_multicond_learned_conditioning(model, prompts, steps)
+        return original_function(model, prompts, steps)
 
-    perp_profile = []
+    perp_profile.clear()
     for prompt in prompts:
-        and_keywords = re.split(r'\b(AND(?:_PERP)?)\b', prompt)[1::2]
-        perp_profile.append(['AND'] + and_keywords)
+        and_keywords = and_perp_regex.split(prompt)[1::2]
+        perp_profile.append([AND_KEYWORD] + and_keywords)
 
-    prompts = [re.sub(r'\bAND_PERP\b', 'AND', prompt) for prompt in prompts]
+    prompts = [and_perp_regex.sub(AND_KEYWORD, prompt) for prompt in prompts]
     prompts = [prompt.replace('\n', ' ') for prompt in prompts]
-    return original_get_multicond_learned_conditioning(model, prompts, steps)
-
-
-original_get_multicond_learned_conditioning = getattr(prompt_parser, '__neutral_prompt_original_get_multicond_learned_conditioning', prompt_parser.get_multicond_learned_conditioning)
-setattr(prompt_parser, '__neutral_prompt_original_get_multicond_learned_conditioning', original_get_multicond_learned_conditioning)
-prompt_parser.get_multicond_learned_conditioning = get_multicond_learned_conditioning_hijack
-
-
-def on_script_unloaded():
-    prompt_parser.get_multicond_learned_conditioning = original_get_multicond_learned_conditioning
-    sd_samplers_kdiffusion.CFGDenoiser.combine_denoise = original_combine_denoise
-
-
-script_callbacks.on_script_unloaded(on_script_unloaded)
+    return original_function(model, prompts, steps)
 
 
 class NeutralPromptScript(scripts.Script):
@@ -106,7 +114,7 @@ class NeutralPromptScript(scripts.Script):
                 append_to_prompt = gr.Button(value='Apply to prompt')
 
             append_to_prompt.click(
-                fn=lambda init_prompt, prompt, scale: (f'{init_prompt} AND_PERP {prompt} :{scale}', ''),
+                fn=lambda init_prompt, prompt, scale: (f'{init_prompt} {AND_PERP_KEYWORD} {prompt} :{scale}', ''),
                 inputs=[prompt_textbox, neutral_prompt, neutral_cond_scale],
                 outputs=[prompt_textbox, neutral_prompt]
             )
