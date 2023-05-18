@@ -101,7 +101,7 @@ class NeutralPromptScript(scripts.Script):
             ui_enabled = gr.Checkbox(label='Enable', value=False)
             ui_cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0)
             with gr.Accordion(label='Prompt formatter', open=False):
-                neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (will be added to the positive prompt textbox)')
+                neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)')
                 neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=3, value=-1)
                 append_to_prompt = gr.Button(value='Apply to prompt')
 
