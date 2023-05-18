@@ -6,10 +6,11 @@ import gradio as gr
 is_enabled = False
 neutral_prompt = ''
 neutral_cond_scale = 1.0
+cfg_rescale = 0
 
 
 def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
-    global is_enabled, neutral_cond_scale
+    global is_enabled, neutral_cond_scale, cfg_rescale
     if not is_enabled:
         return original_combine_denoise(self, x_out, conds_list, uncond, cond_scale)
 
@@ -19,11 +20,18 @@ def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
 
     del conds_list[0][0]
 
+    x_pos_std = 0
+
     for i, conds in enumerate(conds_list):
         for cond_index, weight in conds:
-            x_pos_delta = x_out[cond_index] - x_uncond[i]
+            x_pos = x_out[cond_index]
+            x_pos_std += torch.std(x_pos)
+            x_pos_delta = x_pos - x_uncond[i]
             x_cfg = x_pos_delta - neutral_cond_scale * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
             denoised[i] += x_cfg * (weight * cond_scale)
+
+    x_cfg_std = torch.std(denoised)
+    denoised *= cfg_rescale * (x_pos_std / x_cfg_std - 1) + 1
 
     return denoised
 
@@ -81,13 +89,15 @@ class NeutralPromptScript(scripts.Script):
 
     def ui(self, is_img2img):
         with gr.Accordion(label='Neutral Prompt', open=False):
-            ui_neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt')
-            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=0, maximum=2, value=1)
+            ui_neutral_prompt = gr.Textbox(label='Neutral prompt ', show_label=False, lines=3, placeholder='Neutral prompt')
+            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG ', minimum=0, maximum=2, value=1)
+            ui_cfg_rescale = gr.Slider(label='CFG Rescale ', minimum=0, maximum=1, value=1)
 
-        return [ui_neutral_prompt, ui_neutral_cond_scale]
+        return [ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
 
-    def process(self, p: processing.StableDiffusionProcessing, ui_neutral_prompt, ui_neutral_cond_scale):
-        global is_enabled, neutral_prompt, neutral_cond_scale
+    def process(self, p: processing.StableDiffusionProcessing, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
+        global is_enabled, neutral_prompt, neutral_cond_scale, cfg_rescale
         is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
         neutral_prompt = ui_neutral_prompt
         neutral_cond_scale = ui_neutral_cond_scale
+        cfg_rescale = ui_cfg_rescale
