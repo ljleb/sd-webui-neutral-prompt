@@ -1,37 +1,39 @@
+from typing import List
+
 import torch
 from modules import scripts, processing, prompt_parser, script_callbacks, sd_samplers_kdiffusion, shared
 import gradio as gr
+import re
 
 
 is_enabled = False
-neutral_prompt = ''
-neutral_cond_scale = 1.0
+perp_profile = None
 cfg_rescale = 0
 
 
 def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
-    global is_enabled, neutral_cond_scale, cfg_rescale
-    if not is_enabled:
+    global is_enabled, cfg_rescale, perp_profile
+    if not is_enabled or perp_profile is None:
         return original_combine_denoise(self, x_out, conds_list, uncond, cond_scale)
 
-    x_neutral = x_out[conds_list[0][0][0]]
     x_uncond = x_out[-uncond.shape[0]:]
     denoised = torch.clone(x_uncond)
 
-    del conds_list[0][0]
+    for i, (conds, keywords) in enumerate(zip(conds_list, perp_profile)):
+        x_pos = torch.zeros_like(denoised[i])
+        for keyword, (cond_index, weight) in [k for k in zip(keywords, conds) if k[0] == 'AND']:
+            x_pos += weight * x_out[cond_index]
 
-    x_pos_std = 0
-
-    for i, conds in enumerate(conds_list):
-        for cond_index, weight in conds:
-            x_pos = x_out[cond_index]
-            x_pos_std += torch.std(x_pos)
+        x_delta_acc = torch.zeros_like(denoised[i])
+        for keyword, (cond_index, weight) in [k for k in zip(keywords, conds) if k[0] == 'AND_PERP']:
+            x_neutral = x_out[cond_index]
             x_pos_delta = x_pos - x_uncond[i]
-            x_cfg = x_pos_delta + neutral_cond_scale * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
-            denoised[i] += x_cfg * (weight * cond_scale)
+            x_delta_acc -= weight * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
 
-    x_cfg_std = torch.std(denoised)
-    denoised *= cfg_rescale * (x_pos_std / x_cfg_std - 1) + 1
+        denoised[i] += cond_scale * (x_pos - x_uncond[i] - x_delta_acc)
+        x_pos_std = torch.std(x_pos)
+        x_cfg_std = torch.std(denoised[i])
+        denoised[i] *= cfg_rescale * (x_pos_std / x_cfg_std - 1) + 1
 
     return denoised
 
@@ -47,16 +49,18 @@ def get_perpendicular_component(pos, neg):
 
 
 def get_multicond_learned_conditioning_hijack(model, prompts, steps):
-    global is_enabled, neutral_prompt
+    global is_enabled, perp_profile
     if not is_enabled:
         return original_get_multicond_learned_conditioning(model, prompts, steps)
 
-    res = original_get_multicond_learned_conditioning(model, prompts, steps)
-    res.batch[0].insert(0, prompt_parser.ComposableScheduledPromptConditioning(
-        schedules=prompt_parser.get_learned_conditioning(model, [neutral_prompt], steps)[0],
-        weight=0.
-    ))
-    return res
+    perp_profile = []
+    for prompt in prompts:
+        and_keywords = re.split(r'\b(AND(?:_PERP)?)\b', prompt)[1::2]
+        perp_profile.append(['AND'] + and_keywords)
+
+    prompts = [re.sub(r'\bAND_PERP\b', 'AND', prompt) for prompt in prompts]
+    prompts = [prompt.replace('\n', ' ') for prompt in prompts]
+    return original_get_multicond_learned_conditioning(model, prompts, steps)
 
 
 original_get_multicond_learned_conditioning = getattr(prompt_parser, '__neutral_prompt_original_get_multicond_learned_conditioning', prompt_parser.get_multicond_learned_conditioning)
@@ -73,24 +77,43 @@ script_callbacks.on_script_unloaded(on_script_unloaded)
 
 
 class NeutralPromptScript(scripts.Script):
+    def __init__(self):
+        self.txt2img_prompt_textbox = None
+        self.img2img_prompt_textbox = None
+
     def title(self) -> str:
         return "Neutral Prompt"
 
     def show(self, is_img2img: bool):
         return scripts.AlwaysVisible
 
-    def ui(self, is_img2img):
+    def after_component(self, component, **kwargs):
+        if getattr(component, 'elem_id', None) == 'txt2img_prompt':
+            self.txt2img_prompt_textbox = component
+
+        if getattr(component, 'elem_id', None) == 'img2img_prompt':
+            self.img2img_prompt_textbox = component
+
+    def ui(self, is_img2img: bool) -> List[gr.components.Component]:
+        prompt_textbox = self.img2img_prompt_textbox if is_img2img else self.txt2img_prompt_textbox
+
         with gr.Accordion(label='Neutral Prompt', open=False):
             ui_enabled = gr.Checkbox(label='Enable', value=False)
-            ui_neutral_prompt = gr.Textbox(label='Neutral prompt ', show_label=False, lines=3, placeholder='Neutral prompt')
-            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG ', minimum=-3, maximum=0, value=-1)
-            ui_cfg_rescale = gr.Slider(label='CFG Rescale ', minimum=0, maximum=1, value=0)
+            ui_cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0)
+            with gr.Accordion(label='Prompt formatter', open=False):
+                neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)')
+                neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=3, value=-1)
+                append_to_prompt = gr.Button(value='Apply to prompt')
 
-        return [ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
+            append_to_prompt.click(
+                fn=lambda init_prompt, prompt, scale: (f'{init_prompt} AND_PERP {prompt} :{scale}', ''),
+                inputs=[prompt_textbox, neutral_prompt, neutral_cond_scale],
+                outputs=[prompt_textbox, neutral_prompt]
+            )
 
-    def process(self, p: processing.StableDiffusionProcessing, ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
-        global is_enabled, neutral_prompt, neutral_cond_scale, cfg_rescale
+        return [ui_enabled, ui_cfg_rescale]
+
+    def process(self, p: processing.StableDiffusionProcessing, ui_enabled, ui_cfg_rescale):
+        global is_enabled, cfg_rescale
         is_enabled = ui_enabled
-        neutral_prompt = ui_neutral_prompt
-        neutral_cond_scale = ui_neutral_cond_scale
         cfg_rescale = ui_cfg_rescale
