@@ -5,24 +5,24 @@ import gradio as gr
 
 is_enabled = False
 neutral_prompt = ''
-origin_cond_scale = 1.0
+neutral_cond_scale = 1.0
 
 
-def combine_denoise_hijack(self, x_out, conds_list, negative, cond_scale):
-    global neutral_prompt
+def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
+    global is_enabled, neutral_cond_scale
     if not is_enabled:
-        return original_combine_denoise(self, x_out, conds_list, negative, cond_scale)
+        return original_combine_denoise(self, x_out, conds_list, uncond, cond_scale)
 
-    x_unc = x_out[conds_list[0][0][0]]
-    x_neg = x_out[-negative.shape[0]:]
-    denoised = x_unc.repeat(x_neg.shape[0], *(1,) * len(x_unc.shape))
+    x_neutral = x_out[conds_list[0][0][0]]
+    x_uncond = x_out[-uncond.shape[0]:]
+    denoised = torch.clone(x_uncond)
 
     del conds_list[0][0]
 
     for i, conds in enumerate(conds_list):
         for cond_index, weight in conds:
-            x_pos_delta = x_out[cond_index] - x_unc
-            x_cfg = x_pos_delta - get_perpendicular_component(x_pos_delta, origin_cond_scale * (x_neg[i] - x_unc))
+            x_pos_delta = x_out[cond_index] - x_uncond[i]
+            x_cfg = x_pos_delta - neutral_cond_scale * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
             denoised[i] += x_cfg * (weight * cond_scale)
 
     return denoised
@@ -81,11 +81,13 @@ class NeutralPromptScript(scripts.Script):
 
     def ui(self, is_img2img):
         with gr.Accordion(label='Neutral Prompt', open=False):
-            ui_neutral_prompt = gr.Textbox(placeholder='Neutral prompt')
+            ui_neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt')
+            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-30, maximum=30)
 
-        return [ui_neutral_prompt]
+        return [ui_neutral_prompt, ui_neutral_cond_scale]
 
-    def process(self, p: processing.StableDiffusionProcessing, ui_neutral_prompt):
-        global is_enabled, neutral_prompt
+    def process(self, p: processing.StableDiffusionProcessing, ui_neutral_prompt, ui_neutral_cond_scale):
+        global is_enabled, neutral_prompt, neutral_cond_scale
         is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
         neutral_prompt = ui_neutral_prompt
+        neutral_cond_scale = ui_neutral_cond_scale
