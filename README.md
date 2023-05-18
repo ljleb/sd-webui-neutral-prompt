@@ -1,5 +1,11 @@
 # sd-webui-neutral-prompt
-implementation of [Prep-Neg](https://arxiv.org/pdf/2304.04968.pdf) cfg algorithm for a1111 webui
+
+Neutral prompt is an a1111 webui extension that replaces the webui's CFG denoising algorithm with a higher-quality implementation based on more recent research.
+
+## Features
+
+- [Prep-Neg](https://perp-neg.github.io/) cfg algorithm
+- standard deviation based CFG rescaling (https://arxiv.org/abs/2305.08891)
 
 ## Special mentions
 
