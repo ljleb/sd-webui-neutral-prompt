@@ -5,6 +5,7 @@ import gradio as gr
 
 is_enabled = False
 neutral_prompt = ''
+origin_cond_scale = 1.0
 
 
 def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
@@ -18,7 +19,7 @@ def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
     for i, conds in enumerate(conds_list):
         origin_cond = x_out[conds[0][0]]
         for cond_index, weight in conds[1:]:
-            aligned_negative = origin_cond + get_perpendicular_component(x_out[cond_index] - origin_cond, denoised_uncond[i] - origin_cond)
+            aligned_negative = origin_cond + origin_cond_scale * get_perpendicular_component(x_out[cond_index] - origin_cond, denoised_uncond[i] - origin_cond)
             denoised[i] += (x_out[cond_index] - aligned_negative) * (weight * cond_scale)
 
     return denoised
@@ -77,7 +78,7 @@ class NeutralPromptScript(scripts.Script):
         return scripts.AlwaysVisible
 
     def ui(self, is_img2img):
-        with gr.Accordion(open=False):
+        with gr.Accordion(label='Neutral Prompt', open=False):
             ui_neutral_prompt = gr.Textbox(placeholder='Neutral prompt')
 
         return [ui_neutral_prompt]
