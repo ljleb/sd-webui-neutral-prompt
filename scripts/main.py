@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 from modules import scripts, processing, prompt_parser, script_callbacks, sd_samplers_kdiffusion, shared
 import gradio as gr
@@ -26,7 +28,7 @@ def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
         for keyword, (cond_index, weight) in [k for k in zip(keywords, conds) if k[0] == 'AND_PERP']:
             x_neutral = x_out[cond_index]
             x_pos_delta = x_pos - x_uncond[i]
-            x_delta_acc += weight * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
+            x_delta_acc -= weight * get_perpendicular_component(x_pos_delta, x_neutral - x_uncond[i])
 
         denoised[i] += cond_scale * (x_pos - x_uncond[i] - x_delta_acc)
         x_pos_std = torch.std(x_pos)
@@ -56,8 +58,9 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps):
         and_keywords = re.split(r'\b(AND(?:_PERP)?)\b', prompt)[1::2]
         perp_profile.append(['AND'] + and_keywords)
 
-    new_prompts = [re.sub(r'\b(AND(?:_PERP)?)\b', 'AND', prompt).replace('\n', ' ') for prompt in prompts]
-    return original_get_multicond_learned_conditioning(model, new_prompts, steps)
+    prompts = [re.sub(r'\bAND_PERP\b', 'AND', prompt) for prompt in prompts]
+    prompts = [prompt.replace('\n', ' ') for prompt in prompts]
+    return original_get_multicond_learned_conditioning(model, prompts, steps)
 
 
 original_get_multicond_learned_conditioning = getattr(prompt_parser, '__neutral_prompt_original_get_multicond_learned_conditioning', prompt_parser.get_multicond_learned_conditioning)
@@ -80,7 +83,7 @@ class NeutralPromptScript(scripts.Script):
     def show(self, is_img2img: bool):
         return scripts.AlwaysVisible
 
-    def ui(self, is_img2img):
+    def ui(self, is_img2img: bool) -> List[gr.components.Component]:
         with gr.Accordion(label='Neutral Prompt', open=False):
             ui_enabled = gr.Checkbox(label='Enable', value=False)
             ui_neutral_prompt = gr.Textbox(label='Neutral prompt ', show_label=False, lines=3, placeholder='Neutral prompt')
@@ -90,8 +93,10 @@ class NeutralPromptScript(scripts.Script):
         return [ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
 
     def process(self, p: processing.StableDiffusionProcessing, ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
-        global is_enabled, neutral_prompt, neutral_cond_scale, cfg_rescale
+        global is_enabled, cfg_rescale
         is_enabled = ui_enabled
-        neutral_prompt = ui_neutral_prompt
-        neutral_cond_scale = ui_neutral_cond_scale
         cfg_rescale = ui_cfg_rescale
+
+        if ui_neutral_prompt:
+            for i in range(len(p.all_prompts)):
+                p.all_prompts[i] = f'{p.all_prompts[i]} AND_PERP {ui_neutral_prompt} :{ui_neutral_cond_scale}'
