@@ -8,19 +8,22 @@ neutral_prompt = ''
 origin_cond_scale = 1.0
 
 
-def combine_denoise_hijack(self, x_out, conds_list, uncond, cond_scale):
+def combine_denoise_hijack(self, x_out, conds_list, negative, cond_scale):
     global neutral_prompt
     if not is_enabled:
-        return original_combine_denoise(self, x_out, conds_list, uncond, cond_scale)
+        return original_combine_denoise(self, x_out, conds_list, negative, cond_scale)
 
-    denoised_uncond = x_out[-uncond.shape[0]:]
-    denoised = torch.clone(denoised_uncond)
+    x_unc = x_out[conds_list[0][0][0]]
+    x_neg = x_out[-negative.shape[0]:]
+    denoised = x_unc.repeat(x_neg.shape[0], *(1,) * len(x_unc.shape))
+
+    del conds_list[0][0]
 
     for i, conds in enumerate(conds_list):
-        origin_cond = x_out[conds[0][0]]
-        for cond_index, weight in conds[1:]:
-            aligned_negative = origin_cond + origin_cond_scale * get_perpendicular_component(x_out[cond_index] - origin_cond, denoised_uncond[i] - origin_cond)
-            denoised[i] += (x_out[cond_index] - aligned_negative) * (weight * cond_scale)
+        for cond_index, weight in conds:
+            x_pos_delta = x_out[cond_index] - x_unc
+            x_cfg = x_pos_delta - get_perpendicular_component(x_pos_delta, origin_cond_scale * (x_neg[i] - x_unc))
+            denoised[i] += x_cfg * (weight * cond_scale)
 
     return denoised
 
@@ -41,11 +44,10 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps):
         return original_get_multicond_learned_conditioning(model, prompts, steps)
 
     res = original_get_multicond_learned_conditioning(model, prompts, steps)
-    for l in res.batch:
-        l.insert(0, prompt_parser.ComposableScheduledPromptConditioning(
-            schedules=prompt_parser.get_learned_conditioning(model, [neutral_prompt], steps)[0],
-            weight=0.
-        ))
+    res.batch[0].insert(0, prompt_parser.ComposableScheduledPromptConditioning(
+        schedules=prompt_parser.get_learned_conditioning(model, [neutral_prompt], steps)[0],
+        weight=0.
+    ))
     return res
 
 
