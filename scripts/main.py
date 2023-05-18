@@ -72,14 +72,6 @@ def on_script_unloaded():
 script_callbacks.on_script_unloaded(on_script_unloaded)
 
 
-def on_ui_settings():
-    section = ('neutral-prompt', 'Neutral Prompt')
-    shared.opts.add_option('neutral_prompt_enabled', shared.OptionInfo(True, 'Enabled', section=section))
-
-
-script_callbacks.on_ui_settings(on_ui_settings)
-
-
 class NeutralPromptScript(scripts.Script):
     def title(self) -> str:
         return "Neutral Prompt"
@@ -89,15 +81,16 @@ class NeutralPromptScript(scripts.Script):
 
     def ui(self, is_img2img):
         with gr.Accordion(label='Neutral Prompt', open=False):
+            ui_enabled = gr.Checkbox(label='Enable', value=False)
             ui_neutral_prompt = gr.Textbox(label='Neutral prompt ', show_label=False, lines=3, placeholder='Neutral prompt')
-            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG ', minimum=-3, maximum=0, value=1)
+            ui_neutral_cond_scale = gr.Slider(label='Neutral CFG ', minimum=-3, maximum=0, value=-1)
             ui_cfg_rescale = gr.Slider(label='CFG Rescale ', minimum=0, maximum=1, value=0)
 
-        return [ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
+        return [ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale]
 
-    def process(self, p: processing.StableDiffusionProcessing, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
+    def process(self, p: processing.StableDiffusionProcessing, ui_enabled, ui_neutral_prompt, ui_neutral_cond_scale, ui_cfg_rescale):
         global is_enabled, neutral_prompt, neutral_cond_scale, cfg_rescale
-        is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
+        is_enabled = ui_enabled
         neutral_prompt = ui_neutral_prompt
         neutral_cond_scale = ui_neutral_cond_scale
         cfg_rescale = ui_cfg_rescale
