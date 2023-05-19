@@ -11,42 +11,41 @@ cfg_denoiser_hijacker = hijacker.ModuleHijacker.install_or_get(
 
 
 @cfg_denoiser_hijacker.hijack('combine_denoised')
-def combine_denoised_hijack(self, x_out, conds_list, uncond, cond_scale, original_function):
+def combine_denoised_hijack(self, x_out, batch_cond_indices, uncond, cond_scale, original_function):
     if not global_state.is_enabled or not global_state.perp_profile:
-        return original_function(self, x_out, conds_list, uncond, cond_scale)
+        return original_function(self, x_out, batch_cond_indices, uncond, cond_scale)
 
     uncond = x_out[-uncond.shape[0]:]
     denoised = torch.clone(uncond)
 
-    for batch_i, (conds, keywords) in enumerate(zip(conds_list, global_state.perp_profile)):
-        keyword_cond_pairs = list(zip(keywords, conds))
+    for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
+        def get_cond_indices(filter_k):
+            return [cond_indices[i] for i, k in enumerate(combination_keywords) if k == filter_k]
 
-        positive_epsilon = combine_epsilons(x_out, keywords, keyword_cond_pairs)
-        perp_epsilon_delta = combine_epsilon_deltas(x_out, positive_epsilon, uncond[batch_i], keywords, keyword_cond_pairs)
+        cond = combine_conds(x_out, get_cond_indices(prompt_parser.AND_KEYWORD))
+        perp_cond_delta = combine_perp_cond_deltas(x_out, cond, uncond[batch_i], get_cond_indices(prompt_parser.AND_PERP_KEYWORD))
 
-        denoised[batch_i] += cond_scale * (positive_epsilon - uncond[batch_i] - perp_epsilon_delta)
-        denoised[batch_i] *= get_cfg_rescale_factor(denoised[batch_i], positive_epsilon)
+        denoised[batch_i] += cond_scale * (cond - uncond[batch_i] - perp_cond_delta)
+        denoised[batch_i] *= get_cfg_rescale_factor(denoised[batch_i], cond)
 
     return denoised
 
 
-def combine_epsilons(x_out, keywords, keyword_cond_pairs):
-    x_pos = torch.zeros_like(x_out[0])
-    indices = [i for i, k in enumerate(keywords) if k == prompt_parser.AND_KEYWORD]
-    for keyword, (cond_index, weight) in [keyword_cond_pairs[i] for i in indices]:
-        x_pos += weight * x_out[cond_index]
+def combine_conds(x_out, cond_indices):
+    positive_epsilon = torch.zeros_like(x_out[0])
+    for cond_index, weight in cond_indices:
+        positive_epsilon += weight * x_out[cond_index]
 
-    return x_pos
+    return positive_epsilon
 
 
-def combine_epsilon_deltas(x_out, cond, uncond, keywords, keyword_cond_pairs):
-    epsilon_delta = torch.zeros_like(x_out[0])
-    perp_indices = [i for i, k in enumerate(keywords) if k == prompt_parser.AND_PERP_KEYWORD]
-    for keyword, (cond_index, weight) in [keyword_cond_pairs[i] for i in perp_indices]:
-        neutral_cond = x_out[cond_index]
-        epsilon_delta -= weight * get_perpendicular_component(cond - uncond, neutral_cond - uncond)
+def combine_perp_cond_deltas(x_out, cond, uncond, cond_indices):
+    cond_delta = torch.zeros_like(x_out[0])
+    for cond_index, weight in cond_indices:
+        perp_cond = x_out[cond_index]
+        cond_delta -= weight * get_perpendicular_component(cond - uncond, perp_cond - uncond)
 
-    return epsilon_delta
+    return cond_delta
 
 
 def get_perpendicular_component(normal, vector):
