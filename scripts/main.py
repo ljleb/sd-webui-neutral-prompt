@@ -21,7 +21,13 @@ class NeutralPromptScript(scripts.Script):
     def ui(self, is_img2img: bool):
         self.gui.arrange_components(is_img2img)
         self.gui.connect_events(is_img2img)
-        return self.gui.get_processing_components()
+        return self.gui.get_components()
 
     def process(self, p: processing.StableDiffusionProcessing, *args):
-        self.gui.on_process(*args)
+        for k, v in self.gui.unpack_processing_args(*args).items():
+            try:
+                getattr(global_state, k)
+            except AttributeError:
+                continue
+
+            setattr(global_state, k, v)
