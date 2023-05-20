@@ -1,5 +1,5 @@
 from lib_neutral_prompt import global_state, prompt_parser
-from modules import script_callbacks
+from modules import script_callbacks, shared
 from typing import Dict
 import gradio as gr
 import dataclasses
@@ -10,9 +10,8 @@ img2img_prompt_textbox = None
 
 
 @dataclasses.dataclass
-class GradioUserInterface:
+class AccordionInterface:
     def __post_init__(self):
-        self.is_enabled = gr.Checkbox(label='Enable', value=False)
         self.cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0)
         self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)')
         self.neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=3, value=-1)
@@ -20,7 +19,6 @@ class GradioUserInterface:
 
     def arrange_components(self, is_img2img: bool):
         with gr.Accordion(label='Neutral Prompt', open=False):
-            self.is_enabled.render()
             self.cfg_rescale.render()
 
             with gr.Accordion(label='Prompt formatter', open=False):
@@ -38,15 +36,24 @@ class GradioUserInterface:
 
     def get_components(self):
         return (
-            self.is_enabled,
             self.cfg_rescale,
         )
 
-    def unpack_processing_args(self, is_enabled: bool, cfg_rescale: float) -> Dict:
+    def unpack_processing_args(
+        self,
+        cfg_rescale: float,
+    ) -> Dict:
         return {
-            'is_enabled': is_enabled,
             'cfg_rescale': cfg_rescale,
         }
+
+
+def on_ui_settings():
+    section = ('neutral_prompt', 'Neutral Prompt')
+    shared.opts.add_option('neutral_prompt_enabled', shared.OptionInfo(True, 'Enabled', section=section))
+
+
+script_callbacks.on_ui_settings(on_ui_settings)
 
 
 def on_after_component(component, **_kwargs):

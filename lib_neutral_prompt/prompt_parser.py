@@ -1,7 +1,6 @@
 from lib_neutral_prompt import hijacker, global_state
 from modules import script_callbacks, prompt_parser
 from enum import Enum
-import torch
 import re
 
 
