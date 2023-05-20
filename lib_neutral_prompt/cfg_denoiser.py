@@ -1,22 +1,22 @@
-from lib_neutral_prompt import hijacker, global_state, prompt_parser
-from modules import script_callbacks, sd_samplers_kdiffusion
+from lib_neutral_prompt import global_state, prompt_parser
 import torch
 
 
-cfg_denoiser_hijacker = hijacker.ModuleHijacker.install_or_get(
-    module=sd_samplers_kdiffusion.CFGDenoiser,
-    hijacker_attribute='__neutral_prompt',
-    register_uninstall=script_callbacks.on_script_unloaded,
-)
+def combine_denoised_hijack(x_out, batch_cond_indices, noisy_uncond, cond_scale, original_function):
+    original_batch_cond_indices = [
+        [
+            cond_index
+            for k, cond_index in zip(combination_keywords, cond_indices)
+            if k == prompt_parser.AND_KEYWORD
+        ]
+        for combination_keywords, cond_indices in zip(global_state.perp_profile, batch_cond_indices)
+    ]
+    denoised = original_function(x_out, original_batch_cond_indices, noisy_uncond, cond_scale)
 
-
-@cfg_denoiser_hijacker.hijack('combine_denoised')
-def combine_denoised_hijack(self, x_out, batch_cond_indices, uncond, cond_scale, original_function):
     if not global_state.is_enabled or not global_state.perp_profile:
-        return original_function(self, x_out, batch_cond_indices, uncond, cond_scale)
+        return denoised
 
-    uncond = x_out[-uncond.shape[0]:]
-    denoised = torch.clone(uncond)
+    uncond = x_out[-noisy_uncond.shape[0]:]
 
     for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
         def get_cond_indices(filter_k):
@@ -25,8 +25,8 @@ def combine_denoised_hijack(self, x_out, batch_cond_indices, uncond, cond_scale,
         cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.AND_KEYWORD))
         perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.AND_PERP_KEYWORD))
 
-        cfg_cond_delta = cond_scale * (cond_delta - perp_cond_delta)
-        denoised[batch_i] += cfg_cond_delta * get_cfg_rescale_factor(uncond[batch_i] + cfg_cond_delta, cond_delta)
+        cfg_cond = denoised[batch_i] - perp_cond_delta * cond_scale
+        denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta - perp_cond_delta)
 
     return denoised
 

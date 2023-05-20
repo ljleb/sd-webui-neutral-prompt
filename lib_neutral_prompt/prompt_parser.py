@@ -6,7 +6,7 @@ import re
 prompt_parser_hijacker = hijacker.ModuleHijacker.install_or_get(
     module=prompt_parser,
     hijacker_attribute='__neutral_prompt',
-    register_uninstall=script_callbacks.on_script_unloaded,
+    on_uninstall=script_callbacks.on_script_unloaded,
 )
 
 
