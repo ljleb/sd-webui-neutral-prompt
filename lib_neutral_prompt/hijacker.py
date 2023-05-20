@@ -1,5 +1,6 @@
 import functools
 
+
 class ModuleHijacker:
     def __init__(self, module):
         self.__module = module
@@ -20,7 +21,6 @@ class ModuleHijacker:
             setattr(self.__module, attribute, original_function)
 
         self.__original_functions.clear()
-
 
     @staticmethod
     def install_or_get(module, hijacker_attribute, on_uninstall=lambda _callback: None):
