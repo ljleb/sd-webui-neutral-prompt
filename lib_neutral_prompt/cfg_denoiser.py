@@ -29,8 +29,12 @@ def get_original_denoised(original_function, x_out, batch_cond_indices, noisy_un
     seen_indices = set()
     for batch_i, (combination_keywords, cond_indices) in reversed(list(enumerate(zip(global_state.perp_profile, batch_cond_indices)))):
         for keyword, (cond_index, weight) in reversed(list(zip(combination_keywords, cond_indices))):
+            if cond_index in seen_indices:
+                continue
+
             seen_indices.add(cond_index)
-            if keyword == prompt_parser.PromptKeywords.AND or cond_index in seen_indices:
+            if keyword == prompt_parser.PromptKeywords.AND:
+                seen_indices.add(cond_index)
                 continue
 
             x_out = torch.cat([x_out[:cond_index], x_out[cond_index + 1:]], dim=0)
