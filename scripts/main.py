@@ -24,7 +24,7 @@ class NeutralPromptScript(scripts.Script):
         return self.gui.get_components()
 
     def process(self, p: processing.StableDiffusionProcessing, *args):
-        for k, v in self.gui.unpack_args(*args).items():
+        for k, v in self.gui.unpack_processing_args(*args).items():
             previous_value = getattr(global_state, k, None)
             if previous_value is None:
                 continue
