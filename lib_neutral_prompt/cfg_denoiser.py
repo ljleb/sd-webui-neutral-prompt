@@ -22,30 +22,30 @@ def combine_denoised_hijack(self, x_out, batch_cond_indices, uncond, cond_scale,
         def get_cond_indices(filter_k):
             return [cond_indices[i] for i, k in enumerate(combination_keywords) if k == filter_k]
 
-        cond = combine_conds(x_out, get_cond_indices(prompt_parser.AND_KEYWORD))
-        perp_cond_delta = combine_perp_cond_deltas(x_out, cond, uncond[batch_i], get_cond_indices(prompt_parser.AND_PERP_KEYWORD))
+        cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.AND_KEYWORD))
+        perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.AND_PERP_KEYWORD))
 
-        denoised[batch_i] += cond_scale * (cond - uncond[batch_i] - perp_cond_delta)
-        denoised[batch_i] *= get_cfg_rescale_factor(denoised[batch_i], cond)
+        cfg_cond_delta = cond_scale * (cond_delta - perp_cond_delta)
+        denoised[batch_i] += cfg_cond_delta * get_cfg_rescale_factor(uncond[batch_i] + cfg_cond_delta, cond_delta)
 
     return denoised
 
 
-def combine_conds(x_out, cond_indices):
-    positive_epsilon = torch.zeros_like(x_out[0])
-    for cond_index, weight in cond_indices:
-        positive_epsilon += weight * x_out[cond_index]
-
-    return positive_epsilon
-
-
-def combine_perp_cond_deltas(x_out, cond, uncond, cond_indices):
+def combine_cond_deltas(x_out, uncond, cond_indices):
     cond_delta = torch.zeros_like(x_out[0])
     for cond_index, weight in cond_indices:
-        perp_cond = x_out[cond_index]
-        cond_delta -= weight * get_perpendicular_component(cond - uncond, perp_cond - uncond)
+        cond_delta += weight * (x_out[cond_index] - uncond)
 
     return cond_delta
+
+
+def combine_perp_cond_deltas(x_out, cond_delta, uncond, cond_indices):
+    perp_cond_delta = torch.zeros_like(x_out[0])
+    for cond_index, weight in cond_indices:
+        perp_cond = x_out[cond_index]
+        perp_cond_delta -= weight * get_perpendicular_component(cond_delta, perp_cond - uncond)
+
+    return perp_cond_delta
 
 
 def get_perpendicular_component(normal, vector):
