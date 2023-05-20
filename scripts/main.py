@@ -5,12 +5,12 @@ importlib.reload(hijacker)
 importlib.reload(prompt_parser)
 importlib.reload(cfg_denoiser)
 importlib.reload(ui)
-from modules import scripts, processing
+from modules import scripts, processing, shared
 
 
 class NeutralPromptScript(scripts.Script):
     def __init__(self):
-        self.gui = ui.GradioUserInterface()
+        self.accordion_interface = ui.AccordionInterface()
 
     def title(self) -> str:
         return "Neutral Prompt"
@@ -19,12 +19,16 @@ class NeutralPromptScript(scripts.Script):
         return scripts.AlwaysVisible
 
     def ui(self, is_img2img: bool):
-        self.gui.arrange_components(is_img2img)
-        self.gui.connect_events(is_img2img)
-        return self.gui.get_components()
+        self.accordion_interface.arrange_components(is_img2img)
+        self.accordion_interface.connect_events(is_img2img)
+        return self.accordion_interface.get_components()
 
     def process(self, p: processing.StableDiffusionProcessing, *args):
-        for k, v in self.gui.unpack_processing_args(*args).items():
+        if shared.state.job_no > 0:
+            return
+
+        global_state.is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
+        for k, v in self.accordion_interface.unpack_processing_args(*args).items():
             try:
                 getattr(global_state, k)
             except AttributeError:

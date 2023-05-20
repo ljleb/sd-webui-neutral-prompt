@@ -2,6 +2,8 @@ from lib_neutral_prompt import hijacker, global_state, prompt_parser
 from modules import script_callbacks, sd_samplers
 import functools
 import torch
+import sys
+import textwrap
 
 
 def combine_denoised_hijack(x_out, batch_cond_indices, noisy_uncond, cond_scale, original_function):
@@ -81,8 +83,26 @@ sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
 @sd_samplers_hijacker.hijack('create_sampler')
 def create_sampler_hijack(name, model, original_function):
     sampler = original_function(name, model)
+    if name in ('DDIM', 'PLMS', 'UniPC'):
+        if global_state.is_enabled:
+            warn_unsupported_sampler()
+
+        return sampler
+
     sampler.model_wrap_cfg.combine_denoised = functools.partial(
         combine_denoised_hijack,
         original_function=sampler.model_wrap_cfg.combine_denoised
     )
     return sampler
+
+
+def warn_unsupported_sampler():
+    if not global_state.verbose:
+        return
+
+    print(textwrap.dedent('''
+        [sd-webui-neutral-prompt extension]
+        Neutral prompt relies on composition via AND, which the webui does not support when using any of the DDIM, PLMS and UniPC samplers
+        The sampler will NOT be patched
+        Falling back on original sampler implementation...
+    '''), file=sys.stderr)
