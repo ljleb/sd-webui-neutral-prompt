@@ -25,8 +25,9 @@ class NeutralPromptScript(scripts.Script):
 
     def process(self, p: processing.StableDiffusionProcessing, *args):
         for k, v in self.gui.unpack_processing_args(*args).items():
-            previous_value = getattr(global_state, k, None)
-            if previous_value is None:
+            try:
+                getattr(global_state, k)
+            except AttributeError:
                 continue
 
             setattr(global_state, k, v)

@@ -5,32 +5,38 @@ import torch
 
 
 def combine_denoised_hijack(x_out, batch_cond_indices, noisy_uncond, cond_scale, original_function):
-    original_batch_cond_indices = [
-        [
-            cond_index
-            for k, cond_index in zip(combination_keywords, cond_indices)
-            if k == prompt_parser.AND_KEYWORD
-        ]
-        for combination_keywords, cond_indices in zip(global_state.perp_profile, batch_cond_indices)
-    ]
-    denoised = original_function(x_out, original_batch_cond_indices, noisy_uncond, cond_scale)
+    if not global_state.is_enabled:
+        return original_function(x_out, batch_cond_indices, noisy_uncond, cond_scale)
 
-    if not global_state.is_enabled or not global_state.perp_profile:
-        return denoised
-
+    denoised = get_original_denoised(original_function, x_out, batch_cond_indices, noisy_uncond, cond_scale)
     uncond = x_out[-noisy_uncond.shape[0]:]
 
     for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
-        def get_cond_indices(filter_k):
+        def get_cond_indices(filter_k: prompt_parser.PromptKeywords):
             return [cond_indices[i] for i, k in enumerate(combination_keywords) if k == filter_k]
 
-        cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.AND_KEYWORD))
-        perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.AND_PERP_KEYWORD))
+        cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeywords.AND))
+        perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeywords.AND_PERP))
 
         cfg_cond = denoised[batch_i] - perp_cond_delta * cond_scale
         denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta - perp_cond_delta)
 
     return denoised
+
+
+def get_original_denoised(original_function, x_out, batch_cond_indices, noisy_uncond, cond_scale):
+    sliced_batch_cond_indices = list([list(cond_indices) for cond_indices in batch_cond_indices])
+    seen_indices = set()
+    for batch_i, (combination_keywords, cond_indices) in reversed(list(enumerate(zip(global_state.perp_profile, batch_cond_indices)))):
+        for keyword, (cond_index, weight) in reversed(list(zip(combination_keywords, cond_indices))):
+            seen_indices.add(cond_index)
+            if keyword == prompt_parser.PromptKeywords.AND or keyword in seen_indices:
+                continue
+
+            x_out = torch.cat([x_out[:cond_index], x_out[cond_index + 1:]], dim=0)
+            del sliced_batch_cond_indices[batch_i][cond_index]
+
+    return original_function(x_out, sliced_batch_cond_indices, noisy_uncond, cond_scale)
 
 
 def combine_cond_deltas(x_out, uncond, cond_indices):
