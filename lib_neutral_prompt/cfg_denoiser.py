@@ -1,4 +1,6 @@
-from lib_neutral_prompt import global_state, prompt_parser
+from lib_neutral_prompt import global_state, prompt_parser, hijacker
+from modules import script_callbacks, sd_samplers
+import functools
 import torch
 
 
@@ -57,3 +59,20 @@ def get_cfg_rescale_factor(denoised, positive_epsilon):
     x_pos_std = torch.std(positive_epsilon)
     x_cfg_std = torch.std(denoised)
     return global_state.cfg_rescale * (x_pos_std / x_cfg_std - 1) + 1
+
+
+sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
+    module=sd_samplers,
+    hijacker_attribute='__neutral_prompt_hijacker',
+    on_uninstall=script_callbacks.on_script_unloaded,
+)
+
+
+@sd_samplers_hijacker.hijack('create_sampler')
+def create_sampler_hijack(name, model, original_function):
+    sampler = original_function(name, model)
+    sampler.model_wrap_cfg.combine_denoised = functools.partial(
+        combine_denoised_hijack,
+        original_function=sampler.model_wrap_cfg.combine_denoised
+    )
+    return sampler

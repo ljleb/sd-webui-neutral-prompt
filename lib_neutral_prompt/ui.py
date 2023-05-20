@@ -1,3 +1,5 @@
+from typing import Dict
+
 from lib_neutral_prompt import global_state, prompt_parser
 from modules import script_callbacks
 import gradio as gr
@@ -35,15 +37,17 @@ class GradioUserInterface:
             outputs=[prompt_textbox, self.neutral_prompt]
         )
 
-    def get_processing_components(self):
+    def get_components(self):
         return (
             self.enabled,
             self.cfg_rescale,
         )
 
-    def on_process(self, enabled, cfg_rescale):
-        global_state.is_enabled = enabled
-        global_state.cfg_rescale = cfg_rescale
+    def unpack_args(self, enabled: bool, cfg_rescale: float) -> Dict:
+        return {
+            'is_enabled': enabled,
+            'cfg_rescale': cfg_rescale,
+        }
 
 
 def on_after_component(component, **_kwargs):
