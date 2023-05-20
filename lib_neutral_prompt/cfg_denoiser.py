@@ -77,6 +77,9 @@ sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
 @sd_samplers_hijacker.hijack('create_sampler')
 def create_sampler_hijack(name, model, original_function):
     sampler = original_function(name, model)
+    if not global_state.is_enabled:
+        return sampler
+
     sampler.model_wrap_cfg.combine_denoised = functools.partial(
         combine_denoised_hijack,
         original_function=sampler.model_wrap_cfg.combine_denoised
