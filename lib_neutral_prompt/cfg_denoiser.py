@@ -1,4 +1,4 @@
-from lib_neutral_prompt import global_state, prompt_parser, hijacker
+from lib_neutral_prompt import hijacker, global_state, prompt_parser
 from modules import script_callbacks, sd_samplers
 import functools
 import torch
