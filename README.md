@@ -11,7 +11,7 @@ Neutral prompt is an a1111 webui extension that replaces the webui's CFG denoisi
 
 Prep-Neg has been implemented using the `AND_PERP` prompt keyword, signifying "perpendicular `AND`". In one sentence, `AND_PERP` takes advantage of composable diffusion to make it possible prompt for concepts that would otherwise highly overlap with the regular prompts, by removing contradicting noise.
 
-An other way too look at it is that if `AND` prompts are "greedy" (meaning they will try to take as much space as possible in the output), then `AND_PERP` prompts are as lazy as possible, giving up easilly as soon as there is a disagreement in the generated output.
+Another way too look at it is that if `AND` prompts are "greedy" (meaning they will try to take as much space as possible in the output), then `AND_PERP` prompts are as lazy as possible, giving up easilly as soon as there is a disagreement in the generated output.
 
 ## Examples
 
