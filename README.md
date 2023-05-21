@@ -17,9 +17,9 @@ Another way too look at it is that if `AND` prompts are "greedy" (meaning they w
 
 Here is an example to illustrate this idea. Prompt:
 
-`beautiful castle landscape {KEYWORD} monster house castle :-1`
+`beautiful castle landscape AND monster house castle :-1`
 
-This is an XY grid with `{KEYWORD}` replaced by `AND_PERP` and `AND`:
+This is an XY grid with prompt S/R `AND, AND_PERP`:
 
 ![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/29f3cf34-2ed4-45d2-b73a-b6fadec21d61)
 
