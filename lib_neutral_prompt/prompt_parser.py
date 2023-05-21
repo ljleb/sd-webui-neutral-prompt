@@ -11,13 +11,12 @@ prompt_parser_hijacker = hijacker.ModuleHijacker.install_or_get(
 )
 
 
-class PromptKeywords(Enum):
+class PromptKeyword(Enum):
     AND = 'AND'
     AND_PERP = 'AND_PERP'
 
 
-keyword_indices = {keyword: index for index, keyword in enumerate(PromptKeywords)}
-and_perp_regex = re.compile(rf'\b({"|".join([e.value for e in PromptKeywords])})\b')
+and_perp_regex = re.compile(rf'\b({"|".join([e.value for e in PromptKeyword])})\b')
 
 
 @prompt_parser_hijacker.hijack('get_multicond_learned_conditioning')
@@ -27,8 +26,8 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
 
     global_state.perp_profile.clear()
     for prompt in prompts:
-        global_state.perp_profile.append([PromptKeywords.AND] + [PromptKeywords[v] for v in and_perp_regex.split(prompt)[1::2]])
+        global_state.perp_profile.append([PromptKeyword.AND] + [PromptKeyword[v] for v in and_perp_regex.split(prompt)[1::2]])
 
-    prompts = [and_perp_regex.sub(PromptKeywords.AND.value, prompt) for prompt in prompts]
+    prompts = [and_perp_regex.sub(PromptKeyword.AND.value, prompt) for prompt in prompts]
     prompts = [prompt.replace('\n', ' ') for prompt in prompts]
     return original_function(model, prompts, steps)

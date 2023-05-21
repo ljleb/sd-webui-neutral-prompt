@@ -1,24 +1,32 @@
+from typing import Tuple, List
+
 from lib_neutral_prompt import hijacker, global_state, prompt_parser
-from modules import script_callbacks, sd_samplers
+from modules import script_callbacks, sd_samplers, shared
 import functools
 import torch
 import sys
 import textwrap
 
 
-def combine_denoised_hijack(x_out, batch_cond_indices, noisy_uncond, cond_scale, original_function):
+def combine_denoised_hijack(
+    x_out: torch.Tensor,
+    batch_cond_indices: List[List[Tuple[int, float]]],
+    noisy_uncond: torch.Tensor,
+    cond_scale: float,
+    original_function,
+) -> torch.Tensor:
     if not global_state.is_enabled:
         return original_function(x_out, batch_cond_indices, noisy_uncond, cond_scale)
 
-    denoised = get_original_denoised(original_function, x_out, batch_cond_indices, noisy_uncond, cond_scale)
+    denoised = get_webui_denoised(x_out, batch_cond_indices, noisy_uncond, cond_scale, original_function)
     uncond = x_out[-noisy_uncond.shape[0]:]
 
     for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
-        def get_cond_indices(filter_k: prompt_parser.PromptKeywords):
+        def get_cond_indices(filter_k: prompt_parser.PromptKeyword):
             return [cond_indices[i] for i, k in enumerate(combination_keywords) if k == filter_k]
 
-        cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeywords.AND))
-        perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeywords.AND_PERP))
+        cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeyword.AND))
+        perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeyword.AND_PERP))
 
         cfg_cond = denoised[batch_i] - perp_cond_delta * cond_scale
         denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta - perp_cond_delta)
@@ -26,14 +34,20 @@ def combine_denoised_hijack(x_out, batch_cond_indices, noisy_uncond, cond_scale,
     return denoised
 
 
-def get_original_denoised(original_function, x_out, batch_cond_indices, noisy_uncond, cond_scale):
+def get_webui_denoised(
+    x_out: torch.Tensor,
+    batch_cond_indices: List[List[Tuple[int, float]]],
+    noisy_uncond: torch.Tensor,
+    cond_scale: float,
+    original_function,
+):
     sliced_x_out = []
     sliced_batch_cond_indices = []
 
     for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
         sliced_batch_cond_indices.append([])
         for keyword, (cond_index, weight) in zip(combination_keywords, cond_indices):
-            if keyword != prompt_parser.PromptKeywords.AND:
+            if keyword != prompt_parser.PromptKeyword.AND:
                 continue
 
             sliced_x_out.append(x_out[cond_index])
@@ -45,7 +59,11 @@ def get_original_denoised(original_function, x_out, batch_cond_indices, noisy_un
     return original_function(sliced_x_out, sliced_batch_cond_indices, noisy_uncond, cond_scale)
 
 
-def combine_cond_deltas(x_out, uncond, cond_indices):
+def combine_cond_deltas(
+    x_out: torch.Tensor,
+    uncond: torch.Tensor,
+    cond_indices: List[Tuple[int, float]]
+) -> torch.Tensor:
     cond_delta = torch.zeros_like(x_out[0])
     for cond_index, weight in cond_indices:
         cond_delta += weight * (x_out[cond_index] - uncond)
@@ -53,7 +71,12 @@ def combine_cond_deltas(x_out, uncond, cond_indices):
     return cond_delta
 
 
-def combine_perp_cond_deltas(x_out, cond_delta, uncond, cond_indices):
+def combine_perp_cond_deltas(
+    x_out: torch.Tensor,
+    cond_delta: torch.Tensor,
+    uncond: torch.Tensor,
+    cond_indices: List[Tuple[int, float]]
+) -> torch.Tensor:
     perp_cond_delta = torch.zeros_like(x_out[0])
     for cond_index, weight in cond_indices:
         perp_cond = x_out[cond_index]
@@ -62,15 +85,18 @@ def combine_perp_cond_deltas(x_out, cond_delta, uncond, cond_indices):
     return perp_cond_delta
 
 
-def get_perpendicular_component(normal, vector):
-    assert vector.shape == normal.shape
+def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
+    if (normal == 0).all():
+        if shared.state.sampling_step <= 0:
+            warn_projection_not_found()
+
+        return vector
+
     return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
 
 
-def get_cfg_rescale_factor(denoised, positive_epsilon):
-    x_pos_std = torch.std(positive_epsilon)
-    x_cfg_std = torch.std(denoised)
-    return global_state.cfg_rescale * (x_pos_std / x_cfg_std - 1) + 1
+def get_cfg_rescale_factor(cfg_cond, cond):
+    return global_state.cfg_rescale * (torch.std(cond) / torch.std(cfg_cond) - 1) + 1
 
 
 sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
@@ -81,7 +107,7 @@ sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
 
 
 @sd_samplers_hijacker.hijack('create_sampler')
-def create_sampler_hijack(name, model, original_function):
+def create_sampler_hijack(name: str, model, original_function):
     sampler = original_function(name, model)
     if name.startswith(('DDIM', 'PLMS', 'UniPC')):
         if global_state.is_enabled:
@@ -97,12 +123,22 @@ def create_sampler_hijack(name, model, original_function):
 
 
 def warn_unsupported_sampler():
-    if not global_state.verbose:
-        return
-
-    print(textwrap.dedent('''
-        [sd-webui-neutral-prompt extension]
+    console_warn('''
         Neutral prompt relies on composition via AND, which the webui does not support when using any of the DDIM, PLMS and UniPC samplers
         The sampler will NOT be patched
         Falling back on original sampler implementation...
-    '''), file=sys.stderr)
+    ''')
+
+
+def warn_projection_not_found():
+    console_warn('''
+        Could not find a projection for one or more AND_PERP prompts
+        These prompts will NOT be made perpendicular
+    ''')
+
+
+def console_warn(message):
+    if not global_state.verbose:
+        return
+
+    print(f'\n[sd-webui-neutral-prompt extension]{textwrap.dedent(message)}', file=sys.stderr)
