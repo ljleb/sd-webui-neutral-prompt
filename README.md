@@ -23,6 +23,8 @@ This is an XY grid with `{KEYWORD}` replaced by `AND_PERP` and `AND`:
 
 ![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/29f3cf34-2ed4-45d2-b73a-b6fadec21d61)
 
+Takeaways:
+
 - You can see that the dynamic range of the picture is much greater in the `AND_PERP` images than in the `AND` images.
 - The `AND` images also somewhat struggle to create a castle sometimes, where that isn't the case for `AND_PERP` images.
 - The `AND` images are skewed towards a color similar to purple in this instance, because this was the path of least resistance between the two contradicting prompts during generation. On the left, there is no struggle to generate one thing or a different one, so the image is much clearer.
