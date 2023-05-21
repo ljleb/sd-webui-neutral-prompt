@@ -27,18 +27,22 @@ def combine_denoised_hijack(x_out, batch_cond_indices, noisy_uncond, cond_scale,
 
 
 def get_original_denoised(original_function, x_out, batch_cond_indices, noisy_uncond, cond_scale):
-    sliced_batch_cond_indices = list([list(cond_indices) for cond_indices in batch_cond_indices])
-    seen_indices = set()
-    for batch_i, (combination_keywords, cond_indices) in reversed(list(enumerate(zip(global_state.perp_profile, batch_cond_indices)))):
-        for keyword, (cond_index, weight) in reversed(list(zip(combination_keywords, cond_indices))):
-            seen_indices.add(cond_index)
-            if keyword == prompt_parser.PromptKeywords.AND or keyword in seen_indices:
+    sliced_x_out = []
+    sliced_batch_cond_indices = []
+
+    for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
+        sliced_batch_cond_indices.append([])
+        for keyword, (cond_index, weight) in zip(combination_keywords, cond_indices):
+            if keyword != prompt_parser.PromptKeywords.AND:
                 continue
 
-            x_out = torch.cat([x_out[:cond_index], x_out[cond_index + 1:]], dim=0)
-            del sliced_batch_cond_indices[batch_i][cond_index]
+            sliced_x_out.append(x_out[cond_index])
+            sliced_batch_cond_indices[-1].append((len(sliced_x_out) - 1, weight))
 
-    return original_function(x_out, sliced_batch_cond_indices, noisy_uncond, cond_scale)
+    sliced_x_out += [unc for unc in x_out[-noisy_uncond.shape[0]:]]
+    sliced_x_out = torch.stack(sliced_x_out, dim=0)
+    sliced_batch_cond_indices = [il for il in sliced_batch_cond_indices if il]
+    return original_function(sliced_x_out, sliced_batch_cond_indices, noisy_uncond, cond_scale)
 
 
 def combine_cond_deltas(x_out, uncond, cond_indices):
