@@ -9,7 +9,7 @@ Neutral prompt is an a1111 webui extension that replaces the webui's CFG denoisi
 
 ## Known issues
 
-- The webui does not support composable diffusion via [`AND`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features#composable-diffusion) for samplers DDIM, PLMS and UniPC. Since Perp-Neg relies on composable diffusion, it falls back on the appropriate unmodified sampler implementation.
+- The webui does not support composable diffusion via [`AND`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features#composable-diffusion) for samplers DDIM, PLMS and UniPC. Since Perp-Neg relies on composable diffusion, the extension will fallback on the appropriate unmodified sampler implementation whenever they are used.
 
 ## Special Mentions
 
