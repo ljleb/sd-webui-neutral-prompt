@@ -24,11 +24,11 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
     if not global_state.is_enabled:
         return original_function(model, prompts, steps)
 
-    global_state.perp_profile.clear()
+    global_state.prompt_exprs.clear()
     webui_prompts = []
     for prompt in prompts:
         expr = perp_parser.parse_root(prompt)
-        global_state.perp_profile.append(expr.get_profile())
-        webui_prompts.append(expr.get_webui_prompt())
+        global_state.prompt_exprs.append(expr)
+        webui_prompts.append(expr.get_webui_prompt(weight_multiplier=1.))
 
-    return original_function(model, prompts, steps)
+    return original_function(model, webui_prompts, steps)

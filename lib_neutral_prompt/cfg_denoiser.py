@@ -1,7 +1,6 @@
-from typing import Tuple, List
-
-from lib_neutral_prompt import hijacker, global_state, prompt_parser
+from lib_neutral_prompt import hijacker, global_state, prompt_parser, perp_parser
 from modules import script_callbacks, sd_samplers, shared
+from typing import Tuple, List
 import functools
 import torch
 import sys
@@ -11,23 +10,19 @@ import textwrap
 def combine_denoised_hijack(
     x_out: torch.Tensor,
     batch_cond_indices: List[List[Tuple[int, float]]],
-    noisy_uncond: torch.Tensor,
+    text_uncond: torch.Tensor,
     cond_scale: float,
     original_function,
 ) -> torch.Tensor:
     if not global_state.is_enabled:
-        return original_function(x_out, batch_cond_indices, noisy_uncond, cond_scale)
+        return original_function(x_out, batch_cond_indices, text_uncond, cond_scale)
 
-    denoised = get_webui_denoised(x_out, batch_cond_indices, noisy_uncond, cond_scale, original_function)
-    uncond = x_out[-noisy_uncond.shape[0]:]
+    denoised = get_webui_denoised(x_out, batch_cond_indices, text_uncond, cond_scale, original_function)
+    uncond = x_out[-text_uncond.shape[0]:]
 
-    for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
-        def get_cond_indices(filter_k: prompt_parser.PromptKeyword):
-            return [cond_indices[i] for i, k in enumerate(combination_keywords) if k == filter_k]
-
-        cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeyword.AND))
-        perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeyword.AND_PERP))
-
+    for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
+        cond_delta = prompt.get_cond_delta(x_out, uncond[batch_i], cond_indices, 0)
+        perp_cond_delta = prompt.get_perp_cond_delta(x_out, cond_delta, uncond[batch_i], cond_indices, 0)
         cfg_cond = denoised[batch_i] + perp_cond_delta * cond_scale
         denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta + perp_cond_delta)
 
@@ -37,61 +32,26 @@ def combine_denoised_hijack(
 def get_webui_denoised(
     x_out: torch.Tensor,
     batch_cond_indices: List[List[Tuple[int, float]]],
-    noisy_uncond: torch.Tensor,
+    text_uncond: torch.Tensor,
     cond_scale: float,
     original_function,
 ):
     sliced_x_out = []
     sliced_batch_cond_indices = []
 
-    for batch_i, (combination_keywords, cond_indices) in enumerate(zip(global_state.perp_profile, batch_cond_indices)):
+    for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
         sliced_batch_cond_indices.append([])
-        for keyword, (cond_index, weight) in zip(combination_keywords, cond_indices):
-            if keyword != prompt_parser.PromptKeyword.AND:
+        for prompt_child, (cond_index, weight) in zip(prompt.children, cond_indices):
+            if not isinstance(prompt_child, perp_parser.ComposablePrompt):
                 continue
 
             sliced_x_out.append(x_out[cond_index])
             sliced_batch_cond_indices[-1].append((len(sliced_x_out) - 1, weight))
 
-    sliced_x_out += [unc for unc in x_out[-noisy_uncond.shape[0]:]]
+    sliced_x_out += [unc for unc in x_out[-text_uncond.shape[0]:]]
     sliced_x_out = torch.stack(sliced_x_out, dim=0)
     sliced_batch_cond_indices = [il for il in sliced_batch_cond_indices if il]
-    return original_function(sliced_x_out, sliced_batch_cond_indices, noisy_uncond, cond_scale)
-
-
-def combine_cond_deltas(
-    x_out: torch.Tensor,
-    uncond: torch.Tensor,
-    cond_indices: List[Tuple[int, float]]
-) -> torch.Tensor:
-    cond_delta = torch.zeros_like(x_out[0])
-    for cond_index, weight in cond_indices:
-        cond_delta += weight * (x_out[cond_index] - uncond)
-
-    return cond_delta
-
-
-def combine_perp_cond_deltas(
-    x_out: torch.Tensor,
-    cond_delta: torch.Tensor,
-    uncond: torch.Tensor,
-    cond_indices: List[Tuple[int, float]]
-) -> torch.Tensor:
-    perp_cond_delta = torch.zeros_like(x_out[0])
-    for cond_index, weight in cond_indices:
-        perp_cond_delta += weight * get_perpendicular_component(cond_delta, x_out[cond_index] - uncond)
-
-    return perp_cond_delta
-
-
-def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
-    if (normal == 0).all():
-        if shared.state.sampling_step <= 0:
-            warn_projection_not_found()
-
-        return vector
-
-    return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
+    return original_function(sliced_x_out, sliced_batch_cond_indices, text_uncond, cond_scale)
 
 
 def get_cfg_rescale_factor(cfg_cond, cond):
