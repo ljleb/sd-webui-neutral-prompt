@@ -213,7 +213,7 @@ def parse_weight(tokens: List[str]) -> float:
         tokens.pop(0)
         if tokens:
             weight_str = tokens.pop(0)
-            if weight_str.isnumeric():
+            if is_float(weight_str):
                 weight = float(weight_str)
     return weight
 

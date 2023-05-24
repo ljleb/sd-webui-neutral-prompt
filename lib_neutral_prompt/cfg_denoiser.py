@@ -1,5 +1,5 @@
 from lib_neutral_prompt import hijacker, global_state, prompt_parser, perp_parser
-from modules import script_callbacks, sd_samplers, shared
+from modules import script_callbacks, sd_samplers
 from typing import Tuple, List
 import functools
 import torch
