@@ -57,12 +57,12 @@ def parse_prompts(tokens: List[str]) -> List[NeutralPrompt]:
 
 def parse_prompt(tokens: List[str], first: bool = True) -> NeutralPrompt:
     if first:
-        prompt_type = 'AND'
+        prompt_type = PromptKeyword.AND.value
     else:
         assert tokens[0] in prompt_keywords
         prompt_type = tokens.pop(0)
 
-    if prompt_type == 'AND':
+    if prompt_type == PromptKeyword.AND.value:
         prompt, weight = parse_prompt_text(tokens)
         return LeafPrompt(weight, prompt)
     else:
