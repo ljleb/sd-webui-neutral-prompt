@@ -28,8 +28,8 @@ def combine_denoised_hijack(
         cond_delta = combine_cond_deltas(x_out, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeyword.AND))
         perp_cond_delta = combine_perp_cond_deltas(x_out, cond_delta, uncond[batch_i], get_cond_indices(prompt_parser.PromptKeyword.AND_PERP))
 
-        cfg_cond = denoised[batch_i] - perp_cond_delta * cond_scale
-        denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta - perp_cond_delta)
+        cfg_cond = denoised[batch_i] + perp_cond_delta * cond_scale
+        denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta + perp_cond_delta)
 
     return denoised
 
@@ -79,8 +79,7 @@ def combine_perp_cond_deltas(
 ) -> torch.Tensor:
     perp_cond_delta = torch.zeros_like(x_out[0])
     for cond_index, weight in cond_indices:
-        perp_cond = x_out[cond_index]
-        perp_cond_delta -= weight * get_perpendicular_component(cond_delta, perp_cond - uncond)
+        perp_cond_delta += weight * get_perpendicular_component(cond_delta, x_out[cond_index] - uncond)
 
     return perp_cond_delta
 

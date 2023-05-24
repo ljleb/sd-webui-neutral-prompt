@@ -1,4 +1,4 @@
-from lib_neutral_prompt import hijacker, global_state
+from lib_neutral_prompt import hijacker, global_state, perp_parser
 from modules import script_callbacks, prompt_parser
 from enum import Enum
 import re
@@ -25,9 +25,10 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
         return original_function(model, prompts, steps)
 
     global_state.perp_profile.clear()
+    webui_prompts = []
     for prompt in prompts:
-        global_state.perp_profile.append([PromptKeyword.AND] + [PromptKeyword[v] for v in and_perp_regex.split(prompt)[1::2]])
+        expr = perp_parser.parse_root(prompt)
+        global_state.perp_profile.append(expr.get_profile())
+        webui_prompts.append(expr.get_webui_prompt())
 
-    prompts = [and_perp_regex.sub(PromptKeyword.AND.value, prompt) for prompt in prompts]
-    prompts = [prompt.replace('\n', ' ') for prompt in prompts]
     return original_function(model, prompts, steps)
