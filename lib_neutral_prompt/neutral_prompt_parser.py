@@ -38,7 +38,7 @@ class FlatSizeVisitor:
         return sum(child.accept(self) for child in that.children) if that.children else 0
 
 
-def parse_root(string: str) -> NeutralPrompt:
+def parse_root(string: str) -> CompositePrompt:
     tokens = tokenize(string)
     prompts = parse_prompts(tokens)
     return CompositePrompt(1., prompts)
