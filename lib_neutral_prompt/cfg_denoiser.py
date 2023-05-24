@@ -43,19 +43,15 @@ def get_webui_denoised(
     sliced_batch_cond_indices = []
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
-        args = CombineDenoiseArgs(x_out, uncond, cond_indices)
-        sliced_x_out, sliced_cond_indices = prompt.accept(WebuiCombineDenoisedVisitor(), args, 0)
-        sliced_batch_cond_indices.append(offset_indices(sliced_cond_indices, len(sliced_batch_x_out)))
+        args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
+        sliced_x_out, sliced_cond_indices = prompt.accept(GatherWebuiCondIndicesVisitor(), args, len(sliced_batch_x_out))
+        sliced_batch_cond_indices.append(sliced_cond_indices)
         sliced_batch_x_out.extend(sliced_x_out)
 
     sliced_batch_x_out += list(uncond)
     sliced_batch_x_out = torch.stack(sliced_batch_x_out, dim=0)
     sliced_batch_cond_indices = [il for il in sliced_batch_cond_indices if il]
     return original_function(sliced_batch_x_out, sliced_batch_cond_indices, text_uncond, cond_scale)
-
-
-def offset_indices(sliced_cond_indices, offset):
-    return [(cond_index + offset, weight) for cond_index, weight in sliced_cond_indices]
 
 
 def get_cfg_rescale_factor(cfg_cond, cond):
@@ -70,22 +66,31 @@ class CombineDenoiseArgs:
 
 
 @dataclasses.dataclass
-class WebuiCombineDenoisedVisitor:
-    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt, args: CombineDenoiseArgs, index: int) -> Tuple[List[torch.Tensor], List[List[Tuple[int, float]]]]:
+class GatherWebuiCondIndicesVisitor:
+    def visit_composable_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         return [], []
 
-    def visit_composite_prompt(self, that: perp_parser.CompositePrompt, args: CombineDenoiseArgs, index: int) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt, args: CombineDenoiseArgs, index_offset: int) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         sliced_x_out = []
         sliced_cond_indices = []
 
+        index_in = 0
         for child in that.children:
-            if isinstance(child, perp_parser.ComposablePrompt):
-                cond_info = args.cond_indices[index]
-                sliced_x_out.append(args.x_out[cond_info[0]])
-                sliced_cond_indices.append((len(sliced_x_out) - 1, cond_info[1]))
-            index += child.accept(perp_parser.FlatSizeVisitor())
+            index_out = index_offset + len(sliced_x_out)
+            child_x_out, child_cond_indices = child.accept(GatherWebuiCondIndicesVisitor.CondIndexVisitor(), args.x_out, args.cond_indices[index_in], index_out)
+            sliced_x_out.extend(child_x_out)
+            sliced_cond_indices.extend(child_cond_indices)
+            index_in += child.accept(perp_parser.FlatSizeVisitor())
 
         return sliced_x_out, sliced_cond_indices
+
+    @dataclasses.dataclass
+    class CondIndexVisitor:
+        def visit_composable_prompt(self, that: perp_parser.ComposablePrompt, x_out: torch.Tensor, cond_info: Tuple[int, float], index: int) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+            return [x_out[cond_info[0]]], [(index, cond_info[1])]
+
+        def visit_composite_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+            return [], []
 
 
 @dataclasses.dataclass
