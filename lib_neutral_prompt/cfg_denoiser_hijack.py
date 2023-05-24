@@ -70,9 +70,9 @@ class GatherWebuiCondsVisitor:
     def visit_leaf_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         return [], []
 
-    def visit_composite_prompt(
+    def visit_perp_prompt(
         self,
-        that: neutral_prompt_parser.CompositePrompt,
+        that: neutral_prompt_parser.PerpPrompt,
         args: CombineDenoiseArgs,
         index_offset: int,
     ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
@@ -82,7 +82,7 @@ class GatherWebuiCondsVisitor:
         index_in = 0
         for child in that.children:
             index_out = index_offset + len(sliced_x_out)
-            child_x_out, child_cond_indices = child.accept(GatherWebuiCondsVisitor.CondIndexVisitor(), args.x_out, args.cond_indices[index_in], index_out)
+            child_x_out, child_cond_indices = child.accept(GatherWebuiCondsVisitor.SingleCondVisitor(), args.x_out, args.cond_indices[index_in], index_out)
             sliced_x_out.extend(child_x_out)
             sliced_cond_indices.extend(child_cond_indices)
             index_in += child.accept(neutral_prompt_parser.FlatSizeVisitor())
@@ -90,7 +90,7 @@ class GatherWebuiCondsVisitor:
         return sliced_x_out, sliced_cond_indices
 
     @dataclasses.dataclass
-    class CondIndexVisitor:
+    class SingleCondVisitor:
         def visit_leaf_prompt(
             self,
             that: neutral_prompt_parser.LeafPrompt,
@@ -100,7 +100,7 @@ class GatherWebuiCondsVisitor:
         ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
             return [x_out[cond_info[0]]], [(index, cond_info[1])]
 
-        def visit_composite_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+        def visit_perp_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
             return [], []
 
 
@@ -114,9 +114,9 @@ class IntermediateCondDeltaVisitor:
     ) -> torch.Tensor:
         return torch.zeros_like(args.x_out[0])
 
-    def visit_composite_prompt(
+    def visit_perp_prompt(
         self,
-        that: neutral_prompt_parser.CompositePrompt,
+        that: neutral_prompt_parser.PerpPrompt,
         args: CombineDenoiseArgs,
         index: int,
     ) -> torch.Tensor:
@@ -145,9 +145,9 @@ class ImmediateCondDeltaVisitor:
 
         return cond_info[1] * (args.x_out[cond_info[0]] - args.uncond)
 
-    def visit_composite_prompt(
+    def visit_perp_prompt(
         self,
-        that: neutral_prompt_parser.CompositePrompt,
+        that: neutral_prompt_parser.PerpPrompt,
         args: CombineDenoiseArgs,
         index: int,
     ) -> torch.Tensor:
@@ -165,9 +165,9 @@ class PerpCondDeltaVisitor:
     ) -> torch.Tensor:
         return torch.zeros_like(args.x_out[0])
 
-    def visit_composite_prompt(
+    def visit_perp_prompt(
         self,
-        that: neutral_prompt_parser.CompositePrompt,
+        that: neutral_prompt_parser.PerpPrompt,
         args: CombineDenoiseArgs,
         cond_delta: torch.Tensor,
         index: int,

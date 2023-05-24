@@ -6,7 +6,7 @@ from typing import List, Tuple, Any
 
 
 @dataclasses.dataclass
-class NeutralPrompt(abc.ABC):
+class PromptExpr(abc.ABC):
     weight: float
 
     @abc.abstractmethod
@@ -15,7 +15,7 @@ class NeutralPrompt(abc.ABC):
 
 
 @dataclasses.dataclass
-class LeafPrompt(NeutralPrompt):
+class LeafPrompt(PromptExpr):
     prompt: str
 
     def accept(self, visitor, *args, **kwargs):
@@ -23,28 +23,28 @@ class LeafPrompt(NeutralPrompt):
 
 
 @dataclasses.dataclass
-class CompositePrompt(NeutralPrompt):
-    children: List[NeutralPrompt]
+class PerpPrompt(PromptExpr):
+    children: List[PromptExpr]
 
     def accept(self, visitor, *args, **kwargs):
-        return visitor.visit_composite_prompt(self, *args, **kwargs)
+        return visitor.visit_perp_prompt(self, *args, **kwargs)
 
 
 class FlatSizeVisitor:
     def visit_leaf_prompt(self, that: LeafPrompt) -> int:
         return 1
 
-    def visit_composite_prompt(self, that: CompositePrompt) -> int:
+    def visit_perp_prompt(self, that: PerpPrompt) -> int:
         return sum(child.accept(self) for child in that.children) if that.children else 0
 
 
-def parse_root(string: str) -> CompositePrompt:
+def parse_root(string: str) -> PerpPrompt:
     tokens = tokenize(string)
     prompts = parse_prompts(tokens)
-    return CompositePrompt(1., prompts)
+    return PerpPrompt(1., prompts)
 
 
-def parse_prompts(tokens: List[str]) -> List[NeutralPrompt]:
+def parse_prompts(tokens: List[str]) -> List[PromptExpr]:
     prompts = [parse_prompt(tokens)]
     while tokens:
         if tokens[0] in [']']:
@@ -55,7 +55,7 @@ def parse_prompts(tokens: List[str]) -> List[NeutralPrompt]:
     return prompts
 
 
-def parse_prompt(tokens: List[str], first: bool = True) -> NeutralPrompt:
+def parse_prompt(tokens: List[str], first: bool = True) -> PromptExpr:
     if first:
         prompt_type = PromptKeyword.AND.value
     else:
@@ -72,10 +72,10 @@ def parse_prompt(tokens: List[str], first: bool = True) -> NeutralPrompt:
             if tokens:
                 assert tokens.pop(0) == ']'
             weight = parse_weight(tokens)
-            return CompositePrompt(weight, prompts)
+            return PerpPrompt(weight, prompts)
         else:
             prompt, weight = parse_prompt_text(tokens)
-            return CompositePrompt(1., [LeafPrompt(weight, prompt)])
+            return PerpPrompt(1., [LeafPrompt(weight, prompt)])
 
 
 def parse_prompt_text(tokens: List[str]) -> Tuple[str, float]:

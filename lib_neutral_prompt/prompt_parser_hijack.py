@@ -39,5 +39,5 @@ class WebuiPromptVisitor:
         prompt = re.sub(r'\s+', ' ', that.prompt).strip()
         return f'{prompt} :{that.weight}'
 
-    def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt) -> str:
+    def visit_perp_prompt(self, that: neutral_prompt_parser.PerpPrompt) -> str:
         return ' AND '.join(child.accept(self) for child in that.children)
