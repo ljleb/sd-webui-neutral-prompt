@@ -9,7 +9,7 @@ class Prompt(abc.ABC):
     weight: float
 
     @abc.abstractmethod
-    def accept(self, visitor) -> Any:
+    def accept(self, visitor, *args, **kwargs) -> Any:
         pass
 
 
@@ -17,19 +17,19 @@ class Prompt(abc.ABC):
 class ComposablePrompt(Prompt):
     prompt: str
 
-    def accept(self, visitor):
-        return visitor.visit_composable_prompt(self)
+    def accept(self, visitor, *args, **kwargs):
+        return visitor.visit_composable_prompt(self, *args, **kwargs)
 
 
 @dataclasses.dataclass
 class CompositePrompt(Prompt):
     children: List[Prompt]
 
-    def accept(self, visitor):
-        return visitor.visit_composite_prompt(self)
+    def accept(self, visitor, *args, **kwargs):
+        return visitor.visit_composite_prompt(self, *args, **kwargs)
 
 
-class FlatSizePromptVisitor:
+class FlatSizeVisitor:
     def visit_composable_prompt(self, that: ComposablePrompt) -> int:
         return 1
 

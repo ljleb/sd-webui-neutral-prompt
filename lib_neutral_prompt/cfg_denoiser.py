@@ -23,8 +23,8 @@ def combine_denoised_hijack(
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
         args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
-        cond_delta = prompt.accept(IntermediateCondDeltaVisitor(dataclasses.replace(args)))
-        perp_cond_delta = prompt.accept(PerpCondDeltaVisitor(dataclasses.replace(args), cond_delta))
+        cond_delta = prompt.accept(IntermediateCondDeltaVisitor(), args, 0)
+        perp_cond_delta = prompt.accept(PerpCondDeltaVisitor(), args, cond_delta, 0)
         cfg_cond = denoised[batch_i] + perp_cond_delta * cond_scale
         denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta + perp_cond_delta)
 
@@ -38,22 +38,24 @@ def get_webui_denoised(
     cond_scale: float,
     original_function,
 ):
-    sliced_x_out = []
+    uncond = x_out[-text_uncond.shape[0]:]
+    sliced_batch_x_out = []
     sliced_batch_cond_indices = []
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
-        sliced_batch_cond_indices.append([])
-        for prompt_child, (cond_index, weight) in zip(prompt.children, cond_indices):
-            if not isinstance(prompt_child, perp_parser.ComposablePrompt):
-                continue
+        args = CombineDenoiseArgs(x_out, uncond, cond_indices)
+        sliced_x_out, sliced_cond_indices = prompt.accept(WebuiCombineDenoisedVisitor(), args, 0)
+        sliced_batch_cond_indices.append(offset_indices(sliced_cond_indices, len(sliced_batch_x_out)))
+        sliced_batch_x_out.extend(sliced_x_out)
 
-            sliced_x_out.append(x_out[cond_index])
-            sliced_batch_cond_indices[-1].append((len(sliced_x_out) - 1, weight))
-
-    sliced_x_out += [unc for unc in x_out[-text_uncond.shape[0]:]]
-    sliced_x_out = torch.stack(sliced_x_out, dim=0)
+    sliced_batch_x_out += list(uncond)
+    sliced_batch_x_out = torch.stack(sliced_batch_x_out, dim=0)
     sliced_batch_cond_indices = [il for il in sliced_batch_cond_indices if il]
-    return original_function(sliced_x_out, sliced_batch_cond_indices, text_uncond, cond_scale)
+    return original_function(sliced_batch_x_out, sliced_batch_cond_indices, text_uncond, cond_scale)
+
+
+def offset_indices(sliced_cond_indices, offset):
+    return [(cond_index + offset, weight) for cond_index, weight in sliced_cond_indices]
 
 
 def get_cfg_rescale_factor(cfg_cond, cond):
@@ -65,59 +67,70 @@ class CombineDenoiseArgs:
     x_out: torch.Tensor
     uncond: torch.Tensor
     cond_indices: List[Tuple[int, float]]
-    index: int = 0
+
+
+@dataclasses.dataclass
+class WebuiCombineDenoisedVisitor:
+    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt, args: CombineDenoiseArgs, index: int) -> Tuple[List[torch.Tensor], List[List[Tuple[int, float]]]]:
+        return [], []
+
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt, args: CombineDenoiseArgs, index: int) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+        sliced_x_out = []
+        sliced_cond_indices = []
+
+        for child in that.children:
+            if isinstance(child, perp_parser.ComposablePrompt):
+                cond_info = args.cond_indices[index]
+                sliced_x_out.append(args.x_out[cond_info[0]])
+                sliced_cond_indices.append((len(sliced_x_out) - 1, cond_info[1]))
+            index += child.accept(perp_parser.FlatSizeVisitor())
+
+        return sliced_x_out, sliced_cond_indices
 
 
 @dataclasses.dataclass
 class IntermediateCondDeltaVisitor:
-    args: CombineDenoiseArgs
+    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+        return torch.zeros_like(args.x_out[0])
 
-    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt) -> torch.Tensor:
-        return torch.zeros_like(self.args.x_out[0])
-
-    def visit_composite_prompt(self, that: perp_parser.CompositePrompt) -> torch.Tensor:
-        cond_delta = torch.zeros_like(self.args.x_out[0])
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+        cond_delta = torch.zeros_like(args.x_out[0])
 
         for child in that.children:
-            cond_delta += child.accept(ImmediateCondDeltaVisitor(dataclasses.replace(self.args)))
-            self.args.index += child.accept(perp_parser.FlatSizePromptVisitor())
+            cond_delta += child.accept(ImmediateCondDeltaVisitor(), args, index)
+            index += child.accept(perp_parser.FlatSizeVisitor())
 
         return cond_delta
 
 
 @dataclasses.dataclass
 class ImmediateCondDeltaVisitor:
-    args: CombineDenoiseArgs
-
-    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt) -> torch.Tensor:
-        cond_info = self.args.cond_indices[self.args.index]
+    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+        cond_info = args.cond_indices[index]
         if that.weight != cond_info[1]:
             console_warn(f'''
-                An unexpected noise weight was encountered at prompt #{self.args.index}. Expected :{that.weight}, but got :{cond_info[1]}
+                An unexpected noise weight was encountered at prompt #{index}. Expected :{that.weight}, but got :{cond_info[1]}
             ''')
 
-        return cond_info[1] * (self.args.x_out[cond_info[0]] - self.args.uncond)
+        return cond_info[1] * (args.x_out[cond_info[0]] - args.uncond)
 
-    def visit_composite_prompt(self, that: perp_parser.CompositePrompt) -> torch.Tensor:
-        return torch.zeros_like(self.args.x_out[0])
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+        return torch.zeros_like(args.x_out[0])
 
 
 @dataclasses.dataclass
 class PerpCondDeltaVisitor:
-    args: CombineDenoiseArgs
-    cond_delta: torch.Tensor
+    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt, args: CombineDenoiseArgs, cond_delta: torch.Tensor, index: int) -> torch.Tensor:
+        return torch.zeros_like(args.x_out[0])
 
-    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt) -> torch.Tensor:
-        return torch.zeros_like(self.args.x_out[0])
-
-    def visit_composite_prompt(self, that: perp_parser.CompositePrompt) -> torch.Tensor:
-        perp_cond_delta = torch.zeros_like(self.args.x_out[0])
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt, args: CombineDenoiseArgs, cond_delta: torch.Tensor, index: int) -> torch.Tensor:
+        perp_cond_delta = torch.zeros_like(args.x_out[0])
 
         for child in that.children:
-            child_cond_delta = child.accept(IntermediateCondDeltaVisitor(dataclasses.replace(self.args)))
-            child_cond_delta += child.accept(PerpCondDeltaVisitor(dataclasses.replace(self.args), self.cond_delta))
-            perp_cond_delta += child.weight * get_perpendicular_component(self.cond_delta, child_cond_delta)
-            self.args.index += child.accept(perp_parser.FlatSizePromptVisitor())
+            child_cond_delta = child.accept(IntermediateCondDeltaVisitor(), args, index)
+            child_cond_delta += child.accept(self, args, cond_delta, index)
+            perp_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
+            index += child.accept(perp_parser.FlatSizeVisitor())
 
         return perp_cond_delta
 
