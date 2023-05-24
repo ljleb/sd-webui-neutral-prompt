@@ -1,11 +1,12 @@
 import abc
 import dataclasses
 import re
+from enum import Enum
 from typing import List, Tuple, Any
 
 
 @dataclasses.dataclass
-class Prompt(abc.ABC):
+class NeutralPrompt(abc.ABC):
     weight: float
 
     @abc.abstractmethod
@@ -14,7 +15,7 @@ class Prompt(abc.ABC):
 
 
 @dataclasses.dataclass
-class ComposablePrompt(Prompt):
+class ComposablePrompt(NeutralPrompt):
     prompt: str
 
     def accept(self, visitor, *args, **kwargs):
@@ -22,8 +23,8 @@ class ComposablePrompt(Prompt):
 
 
 @dataclasses.dataclass
-class CompositePrompt(Prompt):
-    children: List[Prompt]
+class CompositePrompt(NeutralPrompt):
+    children: List[NeutralPrompt]
 
     def accept(self, visitor, *args, **kwargs):
         return visitor.visit_composite_prompt(self, *args, **kwargs)
@@ -37,13 +38,13 @@ class FlatSizeVisitor:
         return sum(child.accept(self) for child in that.children) if that.children else 0
 
 
-def parse_root(string: str) -> Prompt:
+def parse_root(string: str) -> NeutralPrompt:
     tokens = tokenize(string)
     prompts = parse_prompts(tokens)
     return CompositePrompt(1., prompts)
 
 
-def parse_prompts(tokens: List[str]) -> List[Prompt]:
+def parse_prompts(tokens: List[str]) -> List[NeutralPrompt]:
     prompts = [parse_prompt(tokens)]
     while tokens:
         if tokens[0] in [']']:
@@ -54,11 +55,11 @@ def parse_prompts(tokens: List[str]) -> List[Prompt]:
     return prompts
 
 
-def parse_prompt(tokens: List[str], first: bool = True) -> Prompt:
+def parse_prompt(tokens: List[str], first: bool = True) -> NeutralPrompt:
     if first:
         prompt_type = 'AND'
     else:
-        assert tokens[0] in ['AND', 'AND_PERP']
+        assert tokens[0] in prompt_keywords
         prompt_type = tokens.pop(0)
 
     if prompt_type == 'AND':
@@ -90,11 +91,11 @@ def parse_prompt_text(tokens: List[str]) -> Tuple[str, float]:
             depth += 1
         elif tokens[0] == ':':
             if len(tokens) >= 2 and is_float(tokens[1].strip()):
-                if len(tokens) < 3 or tokens[2] in ['AND', 'AND_PERP'] or tokens[2] == ']' and depth == 0:
+                if len(tokens) < 3 or tokens[2] in prompt_keywords or tokens[2] == ']' and depth == 0:
                     tokens.pop(0)
                     weight = float(tokens.pop(0).strip())
                     break
-        elif tokens[0] in ['AND', 'AND_PERP']:
+        elif tokens[0] in prompt_keywords:
             break
 
         text += tokens.pop(0)
@@ -124,6 +125,14 @@ def is_float(string: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+class PromptKeyword(Enum):
+    AND = 'AND'
+    AND_PERP = 'AND_PERP'
+
+
+prompt_keywords = [e.value for e in PromptKeyword]
 
 
 if __name__ == '__main__':

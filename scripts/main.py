@@ -1,11 +1,12 @@
 from typing import Dict
 
-from lib_neutral_prompt import global_state, hijacker, prompt_parser, cfg_denoiser, ui
+from lib_neutral_prompt import global_state, hijacker, prompt_parser_hijack, neutral_prompt_parser, cfg_denoiser_hijack, ui
 import importlib
 importlib.reload(global_state)
 importlib.reload(hijacker)
-importlib.reload(prompt_parser)
-importlib.reload(cfg_denoiser)
+importlib.reload(prompt_parser_hijack)
+importlib.reload(neutral_prompt_parser)
+importlib.reload(cfg_denoiser_hijack)
 importlib.reload(ui)
 from modules import scripts, processing, shared
 

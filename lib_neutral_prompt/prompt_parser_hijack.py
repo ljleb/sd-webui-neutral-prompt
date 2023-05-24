@@ -1,4 +1,4 @@
-from lib_neutral_prompt import hijacker, global_state, perp_parser
+from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, prompt_parser
 from enum import Enum
 import re
@@ -27,7 +27,7 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
     global_state.prompt_exprs.clear()
     webui_prompts = []
     for prompt in prompts:
-        expr = perp_parser.parse_root(prompt)
+        expr = neutral_prompt_parser.parse_root(prompt)
         global_state.prompt_exprs.append(expr)
         webui_prompts.append(expr.accept(WebuiPromptVisitor()))
 
@@ -35,9 +35,9 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
 
 
 class WebuiPromptVisitor:
-    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt) -> str:
+    def visit_composable_prompt(self, that: neutral_prompt_parser.ComposablePrompt) -> str:
         prompt = re.sub(r'\s+', ' ', that.prompt).strip()
         return f'{prompt} :{that.weight}'
 
-    def visit_composite_prompt(self, that: perp_parser.CompositePrompt) -> str:
+    def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt) -> str:
         return ' AND '.join(child.accept(self) for child in that.children)

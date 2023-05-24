@@ -2,12 +2,12 @@ import unittest
 import pathlib
 import sys
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
-from lib_neutral_prompt import perp_parser
+from lib_neutral_prompt import neutral_prompt_parser
 
 
 class TestMaliciousPromptParser(unittest.TestCase):
     def setUp(self):
-        self.parser = perp_parser
+        self.parser = neutral_prompt_parser
 
     def test_zero_weight(self):
         result = self.parser.parse_root("hello :0.0")
@@ -50,7 +50,7 @@ class TestMaliciousPromptParser(unittest.TestCase):
     def test_deeply_nested_prompt(self):
         deeply_nested_prompt = "hello :1.0" + " AND_PERP [goodbye :2.0" * 100 + "]" * 100
         result = self.parser.parse_root(deeply_nested_prompt)
-        self.assertIsInstance(result.children[1], perp_parser.CompositePrompt)
+        self.assertIsInstance(result.children[1], neutral_prompt_parser.CompositePrompt)
 
     def test_complex_nested_prompts(self):
         complex_prompt = "hello :1.0 AND goodbye :2.0 AND_PERP [welcome :3.0 AND farewell :4.0 AND_PERP [greetings :5.0]]"

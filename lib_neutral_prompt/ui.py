@@ -1,4 +1,4 @@
-from lib_neutral_prompt import global_state, prompt_parser
+from lib_neutral_prompt import global_state, neutral_prompt_parser
 from modules import script_callbacks, shared
 from typing import Dict, Tuple
 import gradio as gr
@@ -28,7 +28,7 @@ class AccordionInterface:
     def connect_events(self, is_img2img: bool):
         prompt_textbox = img2img_prompt_textbox if is_img2img else txt2img_prompt_textbox
         self.append_to_prompt_button.click(
-            fn=lambda init_prompt, prompt, scale: (f'{init_prompt} {prompt_parser.PromptKeyword.AND_PERP.value} {prompt} :{scale}', ''),
+            fn=lambda init_prompt, prompt, scale: (f'{init_prompt}\n{neutral_prompt_parser.PromptKeyword.AND_PERP.value} {prompt} :{scale}', ''),
             inputs=[prompt_textbox, self.neutral_prompt, self.neutral_cond_scale],
             outputs=[prompt_textbox, self.neutral_prompt]
         )
