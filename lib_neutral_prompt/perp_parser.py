@@ -12,7 +12,7 @@ from modules import shared
 class Prompt:
     weight: float
 
-    def get_webui_prompt(self, weight_multiplier: float) -> str:
+    def get_webui_prompt(self) -> str:
         raise NotImplementedError
 
     def flat_size(self) -> int:
@@ -41,9 +41,9 @@ class Prompt:
 class ComposablePrompt(Prompt):
     prompt: str
 
-    def get_webui_prompt(self, weight_multiplier: float) -> str:
+    def get_webui_prompt(self) -> str:
         prompt = re.sub(r'\s+', ' ', self.prompt).strip()
-        return f'{prompt} :{self.weight * weight_multiplier}'
+        return f'{prompt} :{self.weight}'
 
     def flat_size(self) -> int:
         return 1
@@ -71,8 +71,8 @@ class ComposablePrompt(Prompt):
 class CompositePrompt(Prompt):
     children: List[Prompt]
 
-    def get_webui_prompt(self, weight_multiplier: float) -> str:
-        return ' AND '.join(child.get_webui_prompt(self.weight * weight_multiplier) for child in self.children)
+    def get_webui_prompt(self) -> str:
+        return ' AND '.join(child.get_webui_prompt() for child in self.children)
 
     def flat_size(self) -> int:
         return sum(child.flat_size() for child in self.children) if self.children else 0
@@ -115,7 +115,7 @@ class CompositePrompt(Prompt):
             if isinstance(child, CompositePrompt):
                 child_cond_delta = child.get_cond_delta(x_out, uncond, cond_indices, index)
                 child_cond_delta += child.get_perp_cond_delta(x_out, child_cond_delta, uncond, cond_indices, index)
-                perp_cond_delta += cond_indices[index][1] * get_perpendicular_component(cond_delta, child_cond_delta)
+                perp_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
             index += child.flat_size()
 
         return perp_cond_delta

@@ -29,6 +29,6 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
     for prompt in prompts:
         expr = perp_parser.parse_root(prompt)
         global_state.prompt_exprs.append(expr)
-        webui_prompts.append(expr.get_webui_prompt(weight_multiplier=1.))
+        webui_prompts.append(expr.get_webui_prompt())
 
     return original_function(model, webui_prompts, steps)
