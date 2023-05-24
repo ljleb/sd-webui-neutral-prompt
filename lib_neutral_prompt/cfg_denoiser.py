@@ -1,6 +1,7 @@
 from lib_neutral_prompt import hijacker, global_state, prompt_parser, perp_parser
-from modules import script_callbacks, sd_samplers
+from modules import script_callbacks, sd_samplers, shared
 from typing import Tuple, List
+import dataclasses
 import functools
 import torch
 import sys
@@ -21,8 +22,9 @@ def combine_denoised_hijack(
     uncond = x_out[-text_uncond.shape[0]:]
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
-        cond_delta = prompt.get_cond_delta(x_out, uncond[batch_i], cond_indices, 0)
-        perp_cond_delta = prompt.get_perp_cond_delta(x_out, cond_delta, uncond[batch_i], cond_indices, 0)
+        args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
+        cond_delta = prompt.accept(IntermediateCondDeltaVisitor(dataclasses.replace(args)))
+        perp_cond_delta = prompt.accept(PerpCondDeltaVisitor(dataclasses.replace(args), cond_delta))
         cfg_cond = denoised[batch_i] + perp_cond_delta * cond_scale
         denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta + perp_cond_delta)
 
@@ -56,6 +58,78 @@ def get_webui_denoised(
 
 def get_cfg_rescale_factor(cfg_cond, cond):
     return global_state.cfg_rescale * (torch.std(cond) / torch.std(cfg_cond) - 1) + 1
+
+
+@dataclasses.dataclass
+class CombineDenoiseArgs:
+    x_out: torch.Tensor
+    uncond: torch.Tensor
+    cond_indices: List[Tuple[int, float]]
+    index: int = 0
+
+
+@dataclasses.dataclass
+class IntermediateCondDeltaVisitor:
+    args: CombineDenoiseArgs
+
+    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt) -> torch.Tensor:
+        return torch.zeros_like(self.args.x_out[0])
+
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt) -> torch.Tensor:
+        cond_delta = torch.zeros_like(self.args.x_out[0])
+
+        for child in that.children:
+            cond_delta += child.accept(ImmediateCondDeltaVisitor(dataclasses.replace(self.args)))
+            self.args.index += child.accept(perp_parser.FlatSizePromptVisitor())
+
+        return cond_delta
+
+
+@dataclasses.dataclass
+class ImmediateCondDeltaVisitor:
+    args: CombineDenoiseArgs
+
+    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt) -> torch.Tensor:
+        cond_info = self.args.cond_indices[self.args.index]
+        if that.weight != cond_info[1]:
+            console_warn(f'''
+                An unexpected noise weight was encountered at prompt #{self.args.index}. Expected :{that.weight}, but got :{cond_info[1]}
+            ''')
+
+        return cond_info[1] * (self.args.x_out[cond_info[0]] - self.args.uncond)
+
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt) -> torch.Tensor:
+        return torch.zeros_like(self.args.x_out[0])
+
+
+@dataclasses.dataclass
+class PerpCondDeltaVisitor:
+    args: CombineDenoiseArgs
+    cond_delta: torch.Tensor
+
+    def visit_composable_prompt(self, that: perp_parser.ComposablePrompt) -> torch.Tensor:
+        return torch.zeros_like(self.args.x_out[0])
+
+    def visit_composite_prompt(self, that: perp_parser.CompositePrompt) -> torch.Tensor:
+        perp_cond_delta = torch.zeros_like(self.args.x_out[0])
+
+        for child in that.children:
+            child_cond_delta = child.accept(IntermediateCondDeltaVisitor(dataclasses.replace(self.args)))
+            child_cond_delta += child.accept(PerpCondDeltaVisitor(dataclasses.replace(self.args), self.cond_delta))
+            perp_cond_delta += child.weight * get_perpendicular_component(self.cond_delta, child_cond_delta)
+            self.args.index += child.accept(perp_parser.FlatSizePromptVisitor())
+
+        return perp_cond_delta
+
+
+def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
+    if (normal == 0).all():
+        if shared.state.sampling_step <= 0:
+            warn_projection_not_found()
+
+        return vector
+
+    return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
 
 
 sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(

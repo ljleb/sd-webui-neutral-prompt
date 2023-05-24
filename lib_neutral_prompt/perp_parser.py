@@ -1,145 +1,40 @@
+import abc
 import dataclasses
-import sys
-import textwrap
-from typing import List, Tuple
 import re
-import torch
-
-from modules import shared
+from typing import List, Tuple, Any
 
 
 @dataclasses.dataclass
-class Prompt:
+class Prompt(abc.ABC):
     weight: float
 
-    def get_webui_prompt(self) -> str:
-        raise NotImplementedError
-
-    def flat_size(self) -> int:
-        raise NotImplementedError
-
-    def get_shallow_cond_delta(
-        self,
-        x_out: torch.Tensor,
-        uncond: torch.Tensor,
-        cond_info: Tuple[int, float],
-    ) -> torch.Tensor:
-        raise NotImplementedError
-
-    def get_perp_cond_delta(
-        self,
-        x_out: torch.Tensor,
-        cond_delta: torch.Tensor,
-        uncond: torch.Tensor,
-        cond_indices: List[Tuple[int, float]],
-        index: int,
-    ) -> torch.Tensor:
-        raise NotImplementedError
+    @abc.abstractmethod
+    def accept(self, visitor) -> Any:
+        pass
 
 
 @dataclasses.dataclass
 class ComposablePrompt(Prompt):
     prompt: str
 
-    def get_webui_prompt(self) -> str:
-        prompt = re.sub(r'\s+', ' ', self.prompt).strip()
-        return f'{prompt} :{self.weight}'
-
-    def flat_size(self) -> int:
-        return 1
-
-    def get_shallow_cond_delta(
-        self,
-        x_out: torch.Tensor,
-        uncond: torch.Tensor,
-        cond_info: Tuple[int, float]
-    ) -> torch.Tensor:
-        return cond_info[1] * (x_out[cond_info[0]] - uncond)
-
-    def get_perp_cond_delta(
-        self,
-        x_out: torch.Tensor,
-        cond_delta: torch.Tensor,
-        uncond: torch.Tensor,
-        cond_indices: List[Tuple[int, float]],
-        index: int,
-    ) -> torch.Tensor:
-        return torch.zeros_like(x_out[0])
+    def accept(self, visitor):
+        return visitor.visit_composable_prompt(self)
 
 
 @dataclasses.dataclass
 class CompositePrompt(Prompt):
     children: List[Prompt]
 
-    def get_webui_prompt(self) -> str:
-        return ' AND '.join(child.get_webui_prompt() for child in self.children)
-
-    def flat_size(self) -> int:
-        return sum(child.flat_size() for child in self.children) if self.children else 0
-
-    def get_shallow_cond_delta(
-        self,
-        x_out: torch.Tensor,
-        uncond: torch.Tensor,
-        cond_info: Tuple[int, float]
-    ) -> torch.Tensor:
-        return torch.zeros_like(x_out[0])
-
-    def get_cond_delta(
-        self,
-        x_out: torch.Tensor,
-        uncond: torch.Tensor,
-        cond_indices: List[Tuple[int, float]],
-        index: int,
-    ) -> torch.Tensor:
-        cond_delta = torch.zeros_like(x_out[0])
-
-        for child in self.children:
-            cond_info = cond_indices[index]
-            cond_delta += child.get_shallow_cond_delta(x_out, uncond, cond_info)
-            index += child.flat_size()
-
-        return cond_delta
-
-    def get_perp_cond_delta(
-        self,
-        x_out: torch.Tensor,
-        cond_delta: torch.Tensor,
-        uncond: torch.Tensor,
-        cond_indices: List[Tuple[int, float]],
-        index: int,
-    ) -> torch.Tensor:
-        perp_cond_delta = torch.zeros_like(x_out[0])
-
-        for child in self.children:
-            if isinstance(child, CompositePrompt):
-                child_cond_delta = child.get_cond_delta(x_out, uncond, cond_indices, index)
-                child_cond_delta += child.get_perp_cond_delta(x_out, child_cond_delta, uncond, cond_indices, index)
-                perp_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
-            index += child.flat_size()
-
-        return perp_cond_delta
+    def accept(self, visitor):
+        return visitor.visit_composite_prompt(self)
 
 
-def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
-    if (normal == 0).all():
-        if shared.state.sampling_step <= 0:
-            warn_projection_not_found()
+class FlatSizePromptVisitor:
+    def visit_composable_prompt(self, that: ComposablePrompt) -> int:
+        return 1
 
-        return vector
-
-    return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
-
-
-def warn_projection_not_found():
-    console_warn('''
-        Could not find a projection for one or more AND_PERP prompts
-        These prompts will NOT be made perpendicular
-    ''')
-
-
-def console_warn(message):
-    print(f'\n[sd-webui-neutral-prompt extension]{textwrap.dedent(message)}', file=sys.stderr)
+    def visit_composite_prompt(self, that: CompositePrompt) -> int:
+        return sum(child.accept(self) for child in that.children) if that.children else 0
 
 
 def parse_root(string: str) -> Prompt:
