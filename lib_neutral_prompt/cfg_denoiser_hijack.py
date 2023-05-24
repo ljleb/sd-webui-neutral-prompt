@@ -44,7 +44,7 @@ def get_webui_denoised(
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
         args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
-        sliced_x_out, sliced_cond_indices = prompt.accept(GatherWebuiCondIndicesVisitor(), args, len(sliced_batch_x_out))
+        sliced_x_out, sliced_cond_indices = prompt.accept(GatherWebuiCondsVisitor(), args, len(sliced_batch_x_out))
         sliced_batch_cond_indices.append(sliced_cond_indices)
         sliced_batch_x_out.extend(sliced_x_out)
 
@@ -66,7 +66,7 @@ class CombineDenoiseArgs:
 
 
 @dataclasses.dataclass
-class GatherWebuiCondIndicesVisitor:
+class GatherWebuiCondsVisitor:
     def visit_composable_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         return [], []
 
@@ -77,7 +77,7 @@ class GatherWebuiCondIndicesVisitor:
         index_in = 0
         for child in that.children:
             index_out = index_offset + len(sliced_x_out)
-            child_x_out, child_cond_indices = child.accept(GatherWebuiCondIndicesVisitor.CondIndexVisitor(), args.x_out, args.cond_indices[index_in], index_out)
+            child_x_out, child_cond_indices = child.accept(GatherWebuiCondsVisitor.CondIndexVisitor(), args.x_out, args.cond_indices[index_in], index_out)
             sliced_x_out.extend(child_x_out)
             sliced_cond_indices.extend(child_cond_indices)
             index_in += child.accept(neutral_prompt_parser.FlatSizeVisitor())
