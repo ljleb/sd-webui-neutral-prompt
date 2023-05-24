@@ -133,7 +133,7 @@ class PerpCondDeltaVisitor:
 
         for child in that.children:
             child_cond_delta = child.accept(IntermediateCondDeltaVisitor(), args, index)
-            child_cond_delta += child.accept(self, args, cond_delta, index)
+            child_cond_delta += child.accept(self, args, child_cond_delta, index)
             perp_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
