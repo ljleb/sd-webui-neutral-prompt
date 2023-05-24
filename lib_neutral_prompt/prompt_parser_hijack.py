@@ -35,7 +35,7 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
 
 
 class WebuiPromptVisitor:
-    def visit_composable_prompt(self, that: neutral_prompt_parser.ComposablePrompt) -> str:
+    def visit_leaf_prompt(self, that: neutral_prompt_parser.LeafPrompt) -> str:
         prompt = re.sub(r'\s+', ' ', that.prompt).strip()
         return f'{prompt} :{that.weight}'
 

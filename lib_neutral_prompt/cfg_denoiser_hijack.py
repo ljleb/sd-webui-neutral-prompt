@@ -67,10 +67,15 @@ class CombineDenoiseArgs:
 
 @dataclasses.dataclass
 class GatherWebuiCondsVisitor:
-    def visit_composable_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+    def visit_leaf_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         return [], []
 
-    def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt, args: CombineDenoiseArgs, index_offset: int) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+    def visit_composite_prompt(
+        self,
+        that: neutral_prompt_parser.CompositePrompt,
+        args: CombineDenoiseArgs,
+        index_offset: int,
+    ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         sliced_x_out = []
         sliced_cond_indices = []
 
@@ -86,7 +91,13 @@ class GatherWebuiCondsVisitor:
 
     @dataclasses.dataclass
     class CondIndexVisitor:
-        def visit_composable_prompt(self, that: neutral_prompt_parser.ComposablePrompt, x_out: torch.Tensor, cond_info: Tuple[int, float], index: int) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+        def visit_leaf_prompt(
+            self,
+            that: neutral_prompt_parser.LeafPrompt,
+            x_out: torch.Tensor,
+            cond_info: Tuple[int, float],
+            index: int,
+        ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
             return [x_out[cond_info[0]]], [(index, cond_info[1])]
 
         def visit_composite_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
@@ -95,10 +106,20 @@ class GatherWebuiCondsVisitor:
 
 @dataclasses.dataclass
 class IntermediateCondDeltaVisitor:
-    def visit_composable_prompt(self, that: neutral_prompt_parser.ComposablePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+    def visit_leaf_prompt(
+        self,
+        that: neutral_prompt_parser.LeafPrompt,
+        args: CombineDenoiseArgs,
+        index: int,
+    ) -> torch.Tensor:
         return torch.zeros_like(args.x_out[0])
 
-    def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+    def visit_composite_prompt(
+        self,
+        that: neutral_prompt_parser.CompositePrompt,
+        args: CombineDenoiseArgs,
+        index: int,
+    ) -> torch.Tensor:
         cond_delta = torch.zeros_like(args.x_out[0])
 
         for child in that.children:
@@ -110,7 +131,12 @@ class IntermediateCondDeltaVisitor:
 
 @dataclasses.dataclass
 class ImmediateCondDeltaVisitor:
-    def visit_composable_prompt(self, that: neutral_prompt_parser.ComposablePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+    def visit_leaf_prompt(
+        self,
+        that: neutral_prompt_parser.LeafPrompt,
+        args: CombineDenoiseArgs,
+        index: int,
+    ) -> torch.Tensor:
         cond_info = args.cond_indices[index]
         if that.weight != cond_info[1]:
             console_warn(f'''
@@ -119,16 +145,33 @@ class ImmediateCondDeltaVisitor:
 
         return cond_info[1] * (args.x_out[cond_info[0]] - args.uncond)
 
-    def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt, args: CombineDenoiseArgs, index: int) -> torch.Tensor:
+    def visit_composite_prompt(
+        self,
+        that: neutral_prompt_parser.CompositePrompt,
+        args: CombineDenoiseArgs,
+        index: int,
+    ) -> torch.Tensor:
         return torch.zeros_like(args.x_out[0])
 
 
 @dataclasses.dataclass
 class PerpCondDeltaVisitor:
-    def visit_composable_prompt(self, that: neutral_prompt_parser.ComposablePrompt, args: CombineDenoiseArgs, cond_delta: torch.Tensor, index: int) -> torch.Tensor:
+    def visit_leaf_prompt(
+        self,
+        that: neutral_prompt_parser.LeafPrompt,
+        args: CombineDenoiseArgs,
+        cond_delta: torch.Tensor,
+        index: int,
+    ) -> torch.Tensor:
         return torch.zeros_like(args.x_out[0])
 
-    def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt, args: CombineDenoiseArgs, cond_delta: torch.Tensor, index: int) -> torch.Tensor:
+    def visit_composite_prompt(
+        self,
+        that: neutral_prompt_parser.CompositePrompt,
+        args: CombineDenoiseArgs,
+        cond_delta: torch.Tensor,
+        index: int,
+    ) -> torch.Tensor:
         perp_cond_delta = torch.zeros_like(args.x_out[0])
 
         for child in that.children:

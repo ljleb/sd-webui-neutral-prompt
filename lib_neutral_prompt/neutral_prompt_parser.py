@@ -15,11 +15,11 @@ class NeutralPrompt(abc.ABC):
 
 
 @dataclasses.dataclass
-class ComposablePrompt(NeutralPrompt):
+class LeafPrompt(NeutralPrompt):
     prompt: str
 
     def accept(self, visitor, *args, **kwargs):
-        return visitor.visit_composable_prompt(self, *args, **kwargs)
+        return visitor.visit_leaf_prompt(self, *args, **kwargs)
 
 
 @dataclasses.dataclass
@@ -31,7 +31,7 @@ class CompositePrompt(NeutralPrompt):
 
 
 class FlatSizeVisitor:
-    def visit_composable_prompt(self, that: ComposablePrompt) -> int:
+    def visit_leaf_prompt(self, that: LeafPrompt) -> int:
         return 1
 
     def visit_composite_prompt(self, that: CompositePrompt) -> int:
@@ -64,7 +64,7 @@ def parse_prompt(tokens: List[str], first: bool = True) -> NeutralPrompt:
 
     if prompt_type == 'AND':
         prompt, weight = parse_prompt_text(tokens)
-        return ComposablePrompt(weight, prompt)
+        return LeafPrompt(weight, prompt)
     else:
         if tokens[0] == '[':
             tokens.pop(0)
@@ -75,7 +75,7 @@ def parse_prompt(tokens: List[str], first: bool = True) -> NeutralPrompt:
             return CompositePrompt(weight, prompts)
         else:
             prompt, weight = parse_prompt_text(tokens)
-            return CompositePrompt(1., [ComposablePrompt(weight, prompt)])
+            return CompositePrompt(1., [LeafPrompt(weight, prompt)])
 
 
 def parse_prompt_text(tokens: List[str]) -> Tuple[str, float]:
