@@ -29,6 +29,34 @@ Takeaways:
 - The `AND` images also somewhat struggle to create a castle sometimes, where that isn't the case for `AND_PERP` images.
 - The `AND` images are skewed towards a color similar to purple in this instance, because this was the path of least resistance between the two contradicting prompts during generation. On the left, there is no struggle to generate one thing or a different one, so the image is much clearer.
 
+## Advanced features
+
+### Nesting AND_PERP prompts
+
+The extension provides a way to describe prompts that are to be orthogonalized with respect to other perpendicular prompts:
+
+```
+a red hot desert canion AND_PERP [
+    cold blue everest montain :1
+    AND a beautiful woman climbing a massive rocks wall :1.1
+    AND_PERP far away, ugly, ants, water :-0.6
+] :0.9
+AND a rocky sahara climbing party :0.7
+```
+
+In this example, to obtain the final noise from the diffusion model, the extension will:
+
+1. take the noise generated from the prompt `far away, ugly, ants, water :-0.6`
+2. orthogonalize it with respect to `cold blue everest montain :1` and `a beautiful woman climbing a massive rocks wall :1.1` combined
+3. add this orthogonal noise with the prompts it was orthogonalized against
+4. orthogonalize the resulting noise with respect to `a red hot desert canion :1` and `a rocky sahara climbing party :0.7` combined
+5. add this orthogonal noise multiplied by 0.9 with the prompts it was orthogonalized against
+
+The resulting single noise map is composed of all the normal `AND` prompts + all the orthogonalized `AND_PERP` prompts.
+
+In other words, each use of the `AND_PERP` keyword provides an isolated denoising space within its square brackets `[...]`, where the prompts inside of it are combined into a single noise map before being further processed down the prompt tree.
+
+
 ## Known issues
 
 - The webui does not support composable diffusion via [`AND`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features#composable-diffusion) for samplers DDIM, PLMS and UniPC. Since Perp-Neg relies on composable diffusion, the extension will fallback on the appropriate unmodified sampler implementation whenever they are used.
