@@ -44,8 +44,6 @@ a red hot desert canion AND_PERP [
 AND a rocky sahara climbing party :0.7
 ```
 
-![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/f6d0c95b-8efd-4ce2-b5e4-928597facd34)
-
 In this example, to obtain the final noise from the diffusion model, the extension will:
 
 1. take the noise generated from the prompt `far away, ugly, ants, water :-0.6`
@@ -58,6 +56,9 @@ The resulting single noise map is composed of all the normal `AND` prompts + all
 
 In other words, each use of the `AND_PERP` keyword provides an isolated denoising space within its square brackets `[...]`, where the prompts inside of it are combined into a single noise map before being further processed down the prompt tree.
 
+Experimentally, it does not seem useful to go beyond a depth of 2. I have yet to figure whether this allows to control more precisely the generations. If you find interesting ways of controling the generations usinig this, please let me know in the discussions!
+
+![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/f6d0c95b-8efd-4ce2-b5e4-928597facd34)
 
 ## Known issues
 
