@@ -12,10 +12,10 @@ img2img_prompt_textbox = None
 @dataclasses.dataclass
 class AccordionInterface:
     def __post_init__(self):
-        self.cfg_rescale = gr.Slider(label='CFG rescale φ', minimum=0, maximum=1, value=0)
-        self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)')
-        self.neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=3, value=-1)
-        self.append_to_prompt_button = gr.Button(value='Apply to prompt')
+        self.cfg_rescale = gr.Slider(label='CFG rescale φ', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
+        self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)'); self.neutral_prompt.unrender()
+        self.neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=3, value=-1); self.neutral_cond_scale.unrender()
+        self.append_to_prompt_button = gr.Button(value='Apply to prompt'); self.append_to_prompt_button.unrender()
 
     def arrange_components(self, is_img2img: bool):
         with gr.Accordion(label='Neutral Prompt', open=False):
