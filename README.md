@@ -44,6 +44,8 @@ a red hot desert canion AND_PERP [
 AND a rocky sahara climbing party :0.7
 ```
 
+(You should)
+
 In this example, to obtain the final noise from the diffusion model, the extension will:
 
 1. take the noise generated from the prompt `far away, ugly, ants, water :-0.6`

@@ -36,7 +36,7 @@ class TestPromptParser(unittest.TestCase):
 
     def test_and_perp_prompt_child_types(self):
         self.assertIsInstance(self.and_perp_prompt.children[0], neutral_prompt_parser.LeafPrompt)
-        self.assertIsInstance(self.and_perp_prompt.children[1], neutral_prompt_parser.PerpPrompt)
+        self.assertIsInstance(self.and_perp_prompt.children[1], neutral_prompt_parser.CompositePrompt)
 
     def test_and_perp_prompt_nested_child(self):
         nested_child = self.and_perp_prompt.children[1].children[0]
@@ -48,13 +48,13 @@ class TestPromptParser(unittest.TestCase):
 
     def test_nested_and_perp_prompt_child_types(self):
         self.assertIsInstance(self.nested_and_perp_prompt.children[0], neutral_prompt_parser.LeafPrompt)
-        self.assertIsInstance(self.nested_and_perp_prompt.children[1], neutral_prompt_parser.PerpPrompt)
+        self.assertIsInstance(self.nested_and_perp_prompt.children[1], neutral_prompt_parser.CompositePrompt)
 
     def test_nested_and_perp_prompt_nested_child_types(self):
         nested_child = self.nested_and_perp_prompt.children[1].children[0]
         self.assertIsInstance(nested_child, neutral_prompt_parser.LeafPrompt)
         nested_child = self.nested_and_perp_prompt.children[1].children[1]
-        self.assertIsInstance(nested_child, neutral_prompt_parser.PerpPrompt)
+        self.assertIsInstance(nested_child, neutral_prompt_parser.CompositePrompt)
 
     def test_nested_and_perp_prompt_nested_child(self):
         nested_child = self.nested_and_perp_prompt.children[1].children[1].children[0]
