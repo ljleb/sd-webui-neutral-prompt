@@ -1,3 +1,6 @@
+import math
+
+import scipy
 import torchvision
 from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, sd_samplers, shared
@@ -185,44 +188,21 @@ class AuxCondDeltaChildVisitor:
         index: int,
     ) -> torch.Tensor:
         aux_cond_delta = torch.zeros_like(args.x_out[0])
-        salience_masks = []
+        salient_cond_deltas = []
 
         for child in that.children:
             child_cond_delta = child.accept(CondDeltaChildVisitor(), args, index)
             child_cond_delta += child.accept(self, args, child_cond_delta, index)
-            if isinstance(that, neutral_prompt_parser.CompositePrompt):
-                if that.conciliation == neutral_prompt_parser.ConciliationStrategy.PERPENDICULAR:
-                    aux_cond_delta += get_perpendicular_component(cond_delta, child_cond_delta)
-                elif that.conciliation == neutral_prompt_parser.ConciliationStrategy.SALIENCE_MASK:
-                    salience_masks.append(get_salience(child_cond_delta, 1., 1., 1.))
+            if isinstance(child, neutral_prompt_parser.CompositePrompt):
+                if child.conciliation == neutral_prompt_parser.ConciliationStrategy.PERPENDICULAR:
+                    aux_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
+                elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SALIENCE_MASK:
+                    salient_cond_deltas.append((child_cond_delta, child.weight))
+
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
-
+        aux_cond_delta += salient_blend(cond_delta, salient_cond_deltas)
         return aux_cond_delta
-
-
-@dataclasses.dataclass
-class AuxCondDeltaVisitor:
-    def visit_leaf_prompt(
-        self,
-        that: neutral_prompt_parser.LeafPrompt,
-        normal: torch.Tensor,
-        cond_delta: torch.Tensor,
-    ) -> torch.Tensor:
-        return torch.zeros_like(normal)
-
-    def visit_composite_prompt(
-        self,
-        that: neutral_prompt_parser.CompositePrompt,
-        normal: torch.Tensor,
-        cond_delta: torch.Tensor,
-    ) -> torch.Tensor:
-        if that.conciliation == neutral_prompt_parser.ConciliationStrategy.PERPENDICULAR:
-            return get_perpendicular_component(normal, cond_delta)
-        elif that.conciliation == neutral_prompt_parser.ConciliationStrategy.SALIENCE_MASK:
-            return salient_blend(normal, cond_delta)
-        else:
-            return torch.zeros_like(normal)
 
 
 def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
@@ -235,24 +215,61 @@ def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> t
     return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
 
 
-def salient_blend(normal: torch.Tensor, vectors: List[torch.Tensor]) -> torch.Tensor:
-    salience_maps = []
-    for cond_delta in [normal] + vectors:
-        salience_maps.append(get_salience(cond_delta, *get_hacky_config()[0:3]))
+from PIL import Image
+images = []
 
-    mask = torch.argmax(torch.stack(salience_maps), dim=0)
 
-    blur = torchvision.transforms.GaussianBlur(get_hacky_config()[3], sigma=get_hacky_config()[4])
-    result = blur(1 - (mask == 0).float()) * -normal
-    for mask_i in range(len(salience_maps[1:])):
-        result += blur((mask == mask_i).float()) * vectors[mask_i]
+def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]]) -> torch.Tensor:
+    salience_maps = [get_salience(normal, *get_hacky_config()[0:3])] + [get_salience(vector, *get_hacky_config()[3:6]) for vector in [vector for vector, weight in vectors]]
+    mask = torch.argmax(torch.stack(salience_maps, dim=0), dim=0)
+    blur = torchvision.transforms.GaussianBlur(get_hacky_config()[6], sigma=get_hacky_config()[7])
+
+    result = torch.zeros_like(normal)
+    for mask_i, (vector, weight) in enumerate(vectors, start=1):
+        filtered_mask = blur((mask == mask_i).float())
+        # image = torchvision.transforms.functional.to_pil_image(filtered_mask)
+        # image = image.resize((image.size[0] * 8, image.size[1] * 8), Image.Resampling.NEAREST)
+        # image.show()
+        if shared.state.sampling_step == 0 and len(images) > 1:
+            images.clear()
+
+        filtered_result = weight * filtered_mask * (vector - normal)
+        images.append(filtered_result)
+        filtered_result = torch.mean(torch.stack(images, dim=0), dim=0)
+        filtered_result = torch.diff(filtered_result, prepend=filtered_result[:, :, :1]) * shared.state.sampling_step / shared.state.sampling_steps + \
+                          filtered_result * (1 - shared.state.sampling_step / shared.state.sampling_steps)
+        result += filtered_result
+
+        if shared.state.sampling_step >= shared.state.sampling_steps - 2:
+            images_stack = torch.diff(weight * filtered_mask * vector, prepend=(weight * filtered_mask * vector)[:, :, :1])
+            images_stack = (images_stack - torch.min(images_stack)) / (torch.max(images_stack) - torch.min(images_stack))
+            torchvision.transforms.functional.to_pil_image(images_stack).show()
 
     return result
 
 
-def get_salience(vector: torch.Tensor, hardness: float, pre_blur_kernel, pre_blur_sigma) -> torch.Tensor:
+def get_salience(vector: torch.Tensor, hardness: float, pre_blur_kernel: float, pre_blur_sigma: float) -> torch.Tensor:
     blur = torchvision.transforms.GaussianBlur(pre_blur_kernel, sigma=pre_blur_sigma)
-    return torch.softmax(hardness * blur(torch.abs(vector)).flatten(), dim=0).reshape_as(vector)
+    return blur(torch.softmax(hardness * torch.abs(vector).flatten(start_dim=1), dim=1).reshape_as(vector))
+
+
+def low_pass(vector: torch.Tensor, ratio: float):
+    dft = torch.fft.rfft2(vector)
+    dft_filter = torch.arange(0, torch.numel(dft[0]), device='cuda').reshape_as(dft[0])
+    dft_filter = torch.stack([dft_filter] * dft.size(0), dim=0)
+    dft_filter = torch.maximum(dft_filter // dft.size(1) / dft.size(2), dft_filter % dft.size(2) / dft.size(1))
+    dft_filter = (dft_filter < ratio).float()
+    dft_filter[:, 0, 0] = 0
+    return torch.fft.irfft2(dft * dft_filter)
+
+
+def high_pass(vector: torch.Tensor, ratio: float):
+    dft = torch.fft.rfft2(vector)
+    dft_filter = torch.arange(0, torch.numel(dft[0]), device='cuda').reshape_as(dft[0])
+    dft_filter = torch.stack([dft_filter] * dft.size(0), dim=0)
+    dft_filter = torch.maximum(dft_filter // dft.size(1) / dft.size(2), dft_filter % dft.size(2) / dft.size(1))
+    dft_filter = (dft_filter > ratio).float()
+    return torch.fft.irfft2(dft * dft_filter)
 
 
 def get_hacky_config():
