@@ -80,7 +80,7 @@ def parse_prompt(tokens: List[str], *, first: bool) -> PromptExpr:
         assert tokens[0] in prompt_keywords
         prompt_type = tokens.pop(0)
 
-    if tokens[0] == '[':
+    if tokens and tokens[0] == '[':
         tokens.pop(0)
         prompts = parse_prompts(tokens)
         if tokens:

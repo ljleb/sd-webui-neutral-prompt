@@ -12,7 +12,7 @@ Neutral prompt is an a1111 webui extension that enhances the webui's CFG denoisi
 
 ### Keyword `AND_PERP`
 
-The `AND_PERP` keyword, standing for "perpendicular `AND`", integrates the Perp-Neg CFG algorithm. Essentially, `AND_PERP` allows for prompting concepts that highly overlap with regular prompts, by negating contradicting noise.
+The `AND_PERP` keyword, standing for "PERPendicular `AND`", integrates the Perp-Neg CFG algorithm. Essentially, `AND_PERP` allows for prompting concepts that highly overlap with regular prompts, by negating contradicting noise.
 
 You could visualize it as such: if `AND` prompts are "greedy" (taking as much space as possible in the output), `AND_PERP` prompts are opposite, relinquishing control as soon as there is a disagreement in the generated output.
 
