@@ -93,7 +93,7 @@ Each keyword can define a distinct denoising space within its square brackets `[
 
 While there's no strict limit on the depth of nesting, experimental evidence suggests that going beyond a depth of 2 is generally unnecessary. We're still exploring the added precision from deeper nesting. If you discover innovative ways of controlling the generations using nested prompts, please share in the discussions!
 
-![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/f6d0c95b-8efd-4ce2-b5e4-928597facd34)
+![42160-1308556469-magical tree forests, eternal city_AND_PERP  _electrical pole voyage_AND_SALT small nocturne companion_ _AND_SALT  _electrical t](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/40757cae-3690-49be-a343-67efe0d172f5)
 
 ## Known issues
 
