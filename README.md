@@ -81,9 +81,9 @@ AND_SALT [
 ]
 ```
 
-To generate the final noise from the diffusion model, the extension will:
+To generate the final noise from the diffusion model:
 
-1. It first processes the root `AND` prompts. In this case, it's just `magical tree forests, eternal city`
+1. The extension first processes the root `AND` prompts. In this case, it's just `magical tree forests, eternal city`
 2. It then processes the `AND_SALT` prompt `small nocturne companion` in the context of `electrical pole voyage`. This enhances salient features in the `electrical pole voyage` noise
 3. This new noise is orthogonalized with the noise from `magical tree forests, eternal city`, blending the details of the 'electrical pole voyage' into the main scene without creating conflicts
 4. The extension then turns to the second `AND_SALT` group. It processes `electric arcs, bzzz, sparks` in the context of `electrical tornado`, amplifying salient features in the electrical tornado noise
