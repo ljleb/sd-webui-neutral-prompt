@@ -23,10 +23,10 @@ def combine_denoised_hijack(
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
         args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
-        cond_delta = prompt.accept(IntermediateCondDeltaVisitor(), args, 0)
-        perp_cond_delta = prompt.accept(PerpCondDeltaVisitor(), args, cond_delta, 0)
-        cfg_cond = denoised[batch_i] + perp_cond_delta * cond_scale
-        denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta + perp_cond_delta)
+        cond_delta = prompt.accept(CondDeltaChildVisitor(), args, 0)
+        aux_cond_delta = prompt.accept(AuxCondDeltaChildVisitor(), args, cond_delta, 0)
+        cfg_cond = denoised[batch_i] + aux_cond_delta * cond_scale
+        denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta + aux_cond_delta)
 
     return denoised
 
@@ -70,9 +70,9 @@ class GatherWebuiCondsVisitor:
     def visit_leaf_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         return [], []
 
-    def visit_perp_prompt(
+    def visit_composite_prompt(
         self,
-        that: neutral_prompt_parser.PerpPrompt,
+        that: neutral_prompt_parser.CompositePrompt,
         args: CombineDenoiseArgs,
         index_offset: int,
     ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
@@ -100,12 +100,12 @@ class GatherWebuiCondsVisitor:
         ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
             return [x_out[cond_info[0]]], [(index, cond_info[1])]
 
-        def visit_perp_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+        def visit_composite_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
             return [], []
 
 
 @dataclasses.dataclass
-class IntermediateCondDeltaVisitor:
+class CondDeltaChildVisitor:
     def visit_leaf_prompt(
         self,
         that: neutral_prompt_parser.LeafPrompt,
@@ -114,23 +114,23 @@ class IntermediateCondDeltaVisitor:
     ) -> torch.Tensor:
         return torch.zeros_like(args.x_out[0])
 
-    def visit_perp_prompt(
+    def visit_composite_prompt(
         self,
-        that: neutral_prompt_parser.PerpPrompt,
+        that: neutral_prompt_parser.CompositePrompt,
         args: CombineDenoiseArgs,
         index: int,
     ) -> torch.Tensor:
         cond_delta = torch.zeros_like(args.x_out[0])
 
         for child in that.children:
-            cond_delta += child.accept(ImmediateCondDeltaVisitor(), args, index)
+            cond_delta += child.weight * child.accept(CondDeltaVisitor(), args, index)
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
         return cond_delta
 
 
 @dataclasses.dataclass
-class ImmediateCondDeltaVisitor:
+class CondDeltaVisitor:
     def visit_leaf_prompt(
         self,
         that: neutral_prompt_parser.LeafPrompt,
@@ -140,22 +140,33 @@ class ImmediateCondDeltaVisitor:
         cond_info = args.cond_indices[index]
         if that.weight != cond_info[1]:
             console_warn(f'''
-                An unexpected noise weight was encountered at prompt #{index}. Expected :{that.weight}, but got :{cond_info[1]}
+                An unexpected noise weight was encountered at prompt #{index}
+                Expected :{that.weight}, but got :{cond_info[1]}
+                This is likely due to another extension also monkey patching the webui noise blending function
+                Please open a github issue so that the conflict can be resolved
             ''')
 
-        return cond_info[1] * (args.x_out[cond_info[0]] - args.uncond)
+        return args.x_out[cond_info[0]] - args.uncond
 
-    def visit_perp_prompt(
+    def visit_composite_prompt(
         self,
-        that: neutral_prompt_parser.PerpPrompt,
+        that: neutral_prompt_parser.CompositePrompt,
         args: CombineDenoiseArgs,
         index: int,
     ) -> torch.Tensor:
-        return torch.zeros_like(args.x_out[0])
+        cond_delta = torch.zeros_like(args.x_out[0])
+
+        if that.conciliation is None:
+            for child in that.children:
+                child_cond_delta = child.accept(CondDeltaChildVisitor(), args, index)
+                child_cond_delta += child.accept(AuxCondDeltaChildVisitor(), args, child_cond_delta, index)
+                cond_delta += child.weight * child_cond_delta
+
+        return cond_delta
 
 
 @dataclasses.dataclass
-class PerpCondDeltaVisitor:
+class AuxCondDeltaChildVisitor:
     def visit_leaf_prompt(
         self,
         that: neutral_prompt_parser.LeafPrompt,
@@ -165,22 +176,29 @@ class PerpCondDeltaVisitor:
     ) -> torch.Tensor:
         return torch.zeros_like(args.x_out[0])
 
-    def visit_perp_prompt(
+    def visit_composite_prompt(
         self,
-        that: neutral_prompt_parser.PerpPrompt,
+        that: neutral_prompt_parser.CompositePrompt,
         args: CombineDenoiseArgs,
         cond_delta: torch.Tensor,
         index: int,
     ) -> torch.Tensor:
-        perp_cond_delta = torch.zeros_like(args.x_out[0])
+        aux_cond_delta = torch.zeros_like(args.x_out[0])
+        salient_cond_deltas = []
 
         for child in that.children:
-            child_cond_delta = child.accept(IntermediateCondDeltaVisitor(), args, index)
+            child_cond_delta = child.accept(CondDeltaChildVisitor(), args, index)
             child_cond_delta += child.accept(self, args, child_cond_delta, index)
-            perp_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
+            if isinstance(child, neutral_prompt_parser.CompositePrompt):
+                if child.conciliation == neutral_prompt_parser.ConciliationStrategy.PERPENDICULAR:
+                    aux_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
+                elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SALIENCE_MASK:
+                    salient_cond_deltas.append((child_cond_delta, child.weight))
+
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
-        return perp_cond_delta
+        aux_cond_delta += salient_blend(cond_delta, salient_cond_deltas)
+        return aux_cond_delta
 
 
 def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
@@ -191,6 +209,28 @@ def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> t
         return vector
 
     return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
+
+
+def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]]) -> torch.Tensor:
+    """
+        Blends the `normal` tensor with `vectors` in salient regions, weighting contributions by their weights.
+        Salience maps are calculated to identify regions of interest.
+        The blended result combines `normal` and vector information in salient regions.
+    """
+
+    salience_maps = [get_salience(normal)] + [get_salience(vector) for vector, weight in vectors]
+    mask = torch.argmax(torch.stack(salience_maps, dim=0), dim=0)
+
+    result = torch.zeros_like(normal)
+    for mask_i, (vector, weight) in enumerate(vectors, start=1):
+        vector_mask = ((mask == mask_i).float())
+        result += weight * vector_mask * (vector - normal)
+
+    return result
+
+
+def get_salience(vector: torch.Tensor) -> torch.Tensor:
+    return torch.softmax(torch.abs(vector).flatten(), dim=0).reshape_as(vector)
 
 
 sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(

@@ -1,6 +1,5 @@
 from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, prompt_parser
-from enum import Enum
 import re
 
 
@@ -31,5 +30,5 @@ class WebuiPromptVisitor:
         prompt = re.sub(r'\s+', ' ', that.prompt).strip()
         return f'{prompt} :{that.weight}'
 
-    def visit_perp_prompt(self, that: neutral_prompt_parser.PerpPrompt) -> str:
+    def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt) -> str:
         return ' AND '.join(child.accept(self) for child in that.children)

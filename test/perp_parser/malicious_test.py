@@ -9,6 +9,11 @@ class TestMaliciousPromptParser(unittest.TestCase):
     def setUp(self):
         self.parser = neutral_prompt_parser
 
+    def test_empty(self):
+        result = self.parser.parse_root("")
+        self.assertEqual(result.children[0].prompt, "")
+        self.assertEqual(result.children[0].weight, 1.0)
+
     def test_zero_weight(self):
         result = self.parser.parse_root("hello :0.0")
         self.assertEqual(result.children[0].weight, 0.0)
@@ -50,7 +55,7 @@ class TestMaliciousPromptParser(unittest.TestCase):
     def test_deeply_nested_prompt(self):
         deeply_nested_prompt = "hello :1.0" + " AND_PERP [goodbye :2.0" * 100 + "]" * 100
         result = self.parser.parse_root(deeply_nested_prompt)
-        self.assertIsInstance(result.children[1], neutral_prompt_parser.PerpPrompt)
+        self.assertIsInstance(result.children[1], neutral_prompt_parser.CompositePrompt)
 
     def test_complex_nested_prompts(self):
         complex_prompt = "hello :1.0 AND goodbye :2.0 AND_PERP [welcome :3.0 AND farewell :4.0 AND_PERP [greetings :5.0]]"
