@@ -47,26 +47,13 @@ The AND_SALT keyword introduces a unique process called saliency-aware noise ble
 Consider this example prompt utilizing `AND_SALT`:
 
 ```
-a scenic green forest
-AND_SALT [
-    a rare bird perched on a branch
-    AND a roaring river in the distance :1.5
-    AND_SALT a group of deer grazing nearby :-0.5
-] :1.1
-AND a clear blue sky overhead :0.8
+a peaceful twilight beach scene
+AND_SALT a dazzling fireworks display in the sky
 ```
 
-In this example, the extension performs the following actions:
+In this case, the extension first generates noise for the prompts. It then identifies and isolates the most salient regions in the noise of the fireworks display prompt.
 
-1. Use the noise generated from the prompt `a group of deer grazing nearby :-0.5`
-2. The extension focuses on areas of the noise from the previous step that are most active or salient. This portion of the noise is then removed from the combined noise of the other prompts within the AND_SALT bracket (`a rare bird perched on a branch :1` and `a roaring river in the distance :1.5`)
-3. The processed noise from the previous steps is then combined
-4. The extension, once again, identifies and maintains only the high-activation regions in the resulting noise. These areas of interest are determined based on the combined noise from `a scenic green forest :1` and `a clear blue sky overhead :0.8`
-5. The resultant high-activation noise (multiplied by 1.1) is combined with the overall noise from the prompts that it was compared against.
-
-The `AND_SALT` keyword provides a targeted denoising space within its square brackets `[...]`. In this space, prompts are merged into a single noise map before additional processing.
-
-Using `AND_SALT`, you can gain precise control over the high-activation details of your outputs.
+Then, the extension applies this salient noise to the noise of the beach scene. Only the portions of the beach scene noise that coincide with the salient areas of the fireworks display noise are affected. These areas are progressively replaced by the salient noise from the fireworks display.
 
 ## Advanced Features
 
