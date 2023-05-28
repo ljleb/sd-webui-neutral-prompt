@@ -53,7 +53,7 @@ AND_SALT the glimmering rays of a golden sunset piercing through the trees
 
 In this case, the extension identifies and isolates the most salient regions in the noise of the sunset prompt. Then, the extension applies this salient noise to the noise of the rainforest prompt. Only the portions of the rainforest noise that coincide with the salient areas of the sunset noise are affected. These areas are replaced by noise from the sunset prompt.
 
-This is an xy grid using the prompt above to showcase the difference between the 3 keywords:
+This is an XY grid with prompt S/R `AND_SALT, AND, AND_PERP`:
 
 ![xyz_grid-0008-1564977627-a vibrant rainforest with lush green foliage_AND_SALT the glimmering rays of a golden sunset piercing through the trees](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/2404f20b-47f6-457f-b4c5-76b9fd919345)
 
