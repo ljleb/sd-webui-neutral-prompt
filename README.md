@@ -60,8 +60,8 @@ This is an XY grid with prompt S/R `AND_SALT, AND, AND_PERP`:
 Key observations:
 
 - `AND_SALT` behaves more diplomatically, enhancing areas where its impact makes the most sense and aligning with high activity regions in the output
-- `AND_PERP` will find its way through anything not blocked by the regular prompt
 - `AND` gives equal weight to both prompts, creating a blended result
+- `AND_PERP` will find its way through anything not blocked by the regular prompt
 
 ## Advanced Features
 
