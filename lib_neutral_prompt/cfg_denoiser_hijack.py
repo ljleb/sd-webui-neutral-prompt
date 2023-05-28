@@ -227,30 +227,54 @@ def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]
     result = torch.zeros_like(normal)
     for mask_i, (vector, weight) in enumerate(vectors, start=1):
         filtered_mask = blur((mask == mask_i).float())
-        # image = torchvision.transforms.functional.to_pil_image(filtered_mask)
-        # image = image.resize((image.size[0] * 8, image.size[1] * 8), Image.Resampling.NEAREST)
-        # image.show()
         if shared.state.sampling_step == 0 and len(images) > 1:
             images.clear()
 
-        filtered_result = weight * filtered_mask * (vector - normal)
-        images.append(filtered_result)
-        filtered_result = torch.mean(torch.stack(images, dim=0), dim=0)
-        filtered_result = torch.diff(filtered_result, prepend=filtered_result[:, :, :1]) * shared.state.sampling_step / shared.state.sampling_steps + \
-                          filtered_result * (1 - shared.state.sampling_step / shared.state.sampling_steps)
-        result += filtered_result
+        images.append(filtered_mask)
+        # similarities = torch.stack([torch.sum(torch_missing_mul(images[i:])) for i in range(len(images))], dim=0).reshape((len(images), 1, 1, 1))
+        # filtered_mask = torch.softmax((torch.stack(images, dim=0)).sum(0).flatten(), dim=0).reshape_as(vector)
+        # if torch.min(filtered_mask) < torch.max(filtered_mask):
+        #     filtered_mask = (filtered_mask - torch.min(filtered_mask)) / (torch.max(filtered_mask) - torch.min(filtered_mask))
 
-        if shared.state.sampling_step >= shared.state.sampling_steps - 2:
-            images_stack = torch.diff(weight * filtered_mask * vector, prepend=(weight * filtered_mask * vector)[:, :, :1])
-            images_stack = (images_stack - torch.min(images_stack)) / (torch.max(images_stack) - torch.min(images_stack))
-            torchvision.transforms.functional.to_pil_image(images_stack).show()
+        if get_hacky_config()[8]:
+            # import matplotlib.pyplot as plt
+            # xs = torch.arange(0, vector.shape[1])
+            # ys = torch.arange(0, vector.shape[2])
+            # x, y = torch.meshgrid(xs, ys, indexing='xy')
+            # z = filtered_mask.sum(0)
+            # ax = plt.axes(projection='3d')
+            # ax.plot_surface(x.cpu().numpy(), y.cpu().numpy(), z.cpu().numpy())
+            # plt.show()
+
+            image = torchvision.transforms.functional.to_pil_image(filtered_mask[:3] + filtered_mask[3] / 3)
+            print(f'mask max: {torch.max(filtered_mask)}')
+            image = image.resize((image.size[0] * 8, image.size[1] * 8), Image.Resampling.NEAREST)
+            image.show()
+
+        result += weight * filtered_mask * (vector - normal)
+
+        # if shared.state.sampling_step >= shared.state.sampling_steps - 2:
+        #     images_stack = torch.abs(weight * filtered_mask * (vector - normal))
+        #     torchvision.transforms.functional.to_pil_image(images_stack).show()
 
     return result
 
 
+def torch_missing_mul(vectors: List[torch.Tensor]) -> torch.Tensor:
+    if len(vectors) == 1:
+        return torch.zeros_like(vectors[0])
+
+    res = torch.ones_like(vectors[0])
+
+    for vector in vectors:
+        res *= vector
+
+    return res
+
+
 def get_salience(vector: torch.Tensor, hardness: float, pre_blur_kernel: float, pre_blur_sigma: float) -> torch.Tensor:
     blur = torchvision.transforms.GaussianBlur(pre_blur_kernel, sigma=pre_blur_sigma)
-    return blur(torch.softmax(hardness * torch.abs(vector).flatten(start_dim=1), dim=1).reshape_as(vector))
+    return blur(torch.softmax(hardness * torch.abs(vector).flatten(), dim=0).reshape_as(vector))
 
 
 def low_pass(vector: torch.Tensor, ratio: float):
