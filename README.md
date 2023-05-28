@@ -10,13 +10,13 @@ Neutral prompt is an a1111 webui extension that enhances the webui's CFG denoisi
 
 ## Usage
 
-### `AND_PERP` Prompt Keyword
+### Keyword `AND_PERP`
 
 The `AND_PERP` keyword, standing for "perpendicular `AND`", integrates the Perp-Neg CFG algorithm. Essentially, `AND_PERP` allows for prompting concepts that highly overlap with regular prompts, by negating contradicting noise.
 
 You could visualize it as such: if `AND` prompts are "greedy" (taking as much space as possible in the output), `AND_PERP` prompts are opposite, relinquishing control as soon as there is a disagreement in the generated output.
 
-### `AND_SALT` Prompt Keyword
+### Keyword `AND_SALT`
 
 Saliency-aware noise blending is made possible using the `AND_SALT` keyword, shorthand for "`AND` SALienT". In essence, `AND_SALT` monitors high noise activity during denoising and dominates any high-activation regions in the output.
 
@@ -52,7 +52,7 @@ AND_SALT [
     a rare bird perched on a branch
     AND a roaring river in the distance :1.5
     AND_SALT a group of deer grazing nearby :-0.5
-] :1.2
+] :1.1
 AND a clear blue sky overhead :0.8
 ```
 
@@ -62,7 +62,7 @@ In this example, the extension performs the following actions:
 2. The extension focuses on areas of the noise from `a group of deer grazing nearby :-0.5` that are most active or salient. This portion of the noise is then removed from the combined noise of the other prompts within the AND_SALT bracket (`a rare bird perched on a branch :1` and `a roaring river in the distance :1.5`)
 3. The processed noise from the previous steps is then combined
 4. The extension, once again, identifies and maintains only the high-activation regions in the resulting noise. These areas of interest are determined based on the combined noise from `a scenic green forest :1` and `a clear blue sky overhead :0.8`
-5. The resultant high-activation noise (multiplied by 1.2) is combined with the overall noise from the prompts that it was compared against.
+5. The resultant high-activation noise (multiplied by 1.1) is combined with the overall noise from the prompts that it was compared against.
 
 The `AND_SALT` keyword provides a targeted denoising space within its square brackets `[...]`. In this space, prompts are merged into a single noise map before additional processing.
 
