@@ -65,7 +65,7 @@ Key observations:
 
 ## Advanced Features
 
-### Nesting AND_PERP prompts
+### Nesting prompts
 
 The extension supports nesting of all prompt keywords including `AND`, allowing greater flexibility and control over the final output. Here's an example of how these keywords can be combined:
 
