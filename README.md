@@ -59,7 +59,7 @@ AND a clear blue sky overhead :0.8
 In this example, the extension performs the following actions:
 
 1. Use the noise generated from the prompt `a group of deer grazing nearby :-0.5`
-2. The extension focuses on areas of the noise from `a group of deer grazing nearby :-0.5` that are most active or salient. This portion of the noise is then removed from the combined noise of the other prompts within the AND_SALT bracket (`a rare bird perched on a branch :1` and `a roaring river in the distance :1.5`)
+2. The extension focuses on areas of the noise from the previous step that are most active or salient. This portion of the noise is then removed from the combined noise of the other prompts within the AND_SALT bracket (`a rare bird perched on a branch :1` and `a roaring river in the distance :1.5`)
 3. The processed noise from the previous steps is then combined
 4. The extension, once again, identifies and maintains only the high-activation regions in the resulting noise. These areas of interest are determined based on the combined noise from `a scenic green forest :1` and `a clear blue sky overhead :0.8`
 5. The resultant high-activation noise (multiplied by 1.1) is combined with the overall noise from the prompts that it was compared against.
