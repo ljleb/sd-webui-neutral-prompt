@@ -47,13 +47,21 @@ The `AND_SALT` keyword introduces a unique process called saliency-aware noise b
 Consider this example prompt utilizing `AND_SALT`:
 
 ```
-a peaceful twilight beach scene
-AND_SALT a dazzling fireworks display in the sky
+a vibrant rainforest with lush green foliage
+AND_SALT the glimmering rays of a golden sunset piercing through the trees
 ```
 
-In this case, the extension identifies and isolates the most salient regions in the noise of the fireworks prompt. Then, the extension applies this salient noise to the noise of the beach prompt. Only the portions of the beach noise that coincide with the salient areas of the fireworks noise are affected. These areas are replaced by noise from the fireworks display.
+In this case, the extension identifies and isolates the most salient regions in the noise of the sunset prompt. Then, the extension applies this salient noise to the noise of the rainforest prompt. Only the portions of the rainforest noise that coincide with the salient areas of the sunset noise are affected. These areas are replaced by noise from the sunset prompt.
 
-![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/f3734a32-303c-4d4e-b1f3-57729383cc4c)
+This is an xy grid using the prompt above to showcase the difference between the 3 keywords:
+
+![xyz_grid-0008-1564977627-a vibrant rainforest with lush green foliage_AND_SALT the glimmering rays of a golden sunset piercing through the trees](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/2404f20b-47f6-457f-b4c5-76b9fd919345)
+
+Key observations:
+
+- `AND_SALT` behaves more diplomatically, enhancing areas where its impact makes the most sense and aligning with high activity regions in the output
+- `AND_PERP` will find its way through anything not blocked by the regular prompt
+- `AND` gives equal weight to both prompts, creating a blended result
 
 ## Advanced Features
 
