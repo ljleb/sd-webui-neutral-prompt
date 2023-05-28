@@ -5,7 +5,7 @@ Neutral prompt is an a1111 webui extension that replaces the webui's CFG denoisi
 ## Features
 
 - [Perp-Neg](https://perp-neg.github.io/) cfg algorithm, using the `AND_PERP` keyword
-- saliency-aware noise blending, using the `AND_SALT` keyword (credits to [Magic Fusion](https://magicfusion.github.io/) for finding how to determine SNB maps from epsilons)
+- saliency-aware noise blending, using the `AND_SALT` keyword (credits to [Magic Fusion](https://magicfusion.github.io/) for the algorithm used to determine SNB maps from epsilons)
 - standard deviation based CFG rescaling (https://arxiv.org/abs/2305.08891)
 
 ## Usage
