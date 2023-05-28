@@ -233,29 +233,6 @@ def get_salience(vector: torch.Tensor) -> torch.Tensor:
     return torch.softmax(torch.abs(vector).flatten(), dim=0).reshape_as(vector)
 
 
-def low_pass(vector: torch.Tensor, ratio: float):
-    dft = torch.fft.rfft2(vector)
-    dft_filter = torch.zeros_like(dft)
-    dft_filter[..., :int(dft.size(-2) * ratio), :int(dft.size(-1) * ratio)] = 1
-    return torch.fft.irfft2(dft * dft_filter)
-
-
-def high_pass(vector: torch.Tensor, ratio: float):
-    dft = torch.fft.rfft2(vector)
-    dft_filter = torch.ones_like(dft)
-    dft_filter[..., :int(dft.size(-2) * ratio), :int(dft.size(-1) * ratio)] = 0
-    return torch.fft.irfft2(dft * dft_filter)
-
-
-def get_hacky_config():
-    import os
-    relative_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hacky_conf.txt')
-    with open(relative_file_path, 'r') as file:
-        floats = [float(line.strip()) for line in file.readlines() if line.strip()]
-
-    return floats
-
-
 sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
     module=sd_samplers,
     hijacker_attribute='__neutral_prompt_hijacker',
