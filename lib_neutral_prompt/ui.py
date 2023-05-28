@@ -9,12 +9,19 @@ txt2img_prompt_textbox = None
 img2img_prompt_textbox = None
 
 
+prompt_types = {
+    'Perpendicular': neutral_prompt_parser.PromptKeyword.AND_PERP.value,
+    'Saliency-aware': neutral_prompt_parser.PromptKeyword.AND_SALT.value,
+}
+
+
 @dataclasses.dataclass
 class AccordionInterface:
     def __post_init__(self):
         self.cfg_rescale = gr.Slider(label='CFG rescale φ', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
         self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)'); self.neutral_prompt.unrender()
-        self.neutral_cond_scale = gr.Slider(label='Neutral CFG', minimum=-3, maximum=3, value=-1); self.neutral_cond_scale.unrender()
+        self.neutral_cond_scale = gr.Slider(label='Prompt weight', minimum=-3, maximum=3, value=1); self.neutral_cond_scale.unrender()
+        self.aux_prompt_type = gr.Dropdown(label='Prompt type', choices=list(prompt_types.keys()), value=next(iter(prompt_types.keys())))
         self.append_to_prompt_button = gr.Button(value='Apply to prompt'); self.append_to_prompt_button.unrender()
 
     def arrange_components(self, is_img2img: bool):
@@ -23,13 +30,14 @@ class AccordionInterface:
             with gr.Accordion(label='Prompt formatter', open=False):
                 self.neutral_prompt.render()
                 self.neutral_cond_scale.render()
+                self.aux_prompt_type.render()
                 self.append_to_prompt_button.render()
 
     def connect_events(self, is_img2img: bool):
         prompt_textbox = img2img_prompt_textbox if is_img2img else txt2img_prompt_textbox
         self.append_to_prompt_button.click(
-            fn=lambda init_prompt, prompt, scale: (f'{init_prompt}\n{neutral_prompt_parser.PromptKeyword.AND_PERP.value} {prompt} :{scale}', ''),
-            inputs=[prompt_textbox, self.neutral_prompt, self.neutral_cond_scale],
+            fn=lambda init_prompt, prompt, scale, prompt_type: (f'{init_prompt}\n{prompt_types[prompt_type]} {prompt} :{scale}', ''),
+            inputs=[prompt_textbox, self.neutral_prompt, self.neutral_cond_scale, self.aux_prompt_type],
             outputs=[prompt_textbox, self.neutral_prompt]
         )
 
