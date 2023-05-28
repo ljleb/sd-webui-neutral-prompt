@@ -153,8 +153,8 @@ if __name__ == '__main__':
     AND_PERP [
         arst
         AND defg : 2
-        AND_PERP [
-            very nested huh? what  [do you say :.0
+        AND_SALT [
+            very nested huh? what do you say :.0
         ]
     ]
     ''')

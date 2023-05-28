@@ -9,6 +9,11 @@ class TestMaliciousPromptParser(unittest.TestCase):
     def setUp(self):
         self.parser = neutral_prompt_parser
 
+    def test_empty(self):
+        result = self.parser.parse_root("")
+        self.assertEqual(result.children[0].prompt, "")
+        self.assertEqual(result.children[0].weight, 1.0)
+
     def test_zero_weight(self):
         result = self.parser.parse_root("hello :0.0")
         self.assertEqual(result.children[0].weight, 0.0)
