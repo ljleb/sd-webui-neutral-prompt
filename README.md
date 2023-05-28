@@ -67,31 +67,31 @@ Key observations:
 
 ### Nesting AND_PERP prompts
 
-The extension enables nesting prompts orthogonal to other perpendicular prompts:
+The extension supports nesting of all prompt keywords including `AND`, allowing greater flexibility and control over the final output. Here's an example of how these keywords can be combined:
 
 ```
-a red hot desert canion
+magical tree forests, eternal city
 AND_PERP [
-    cold blue everest montain
-    AND a beautiful woman climbing a massive rocks wall :1.1
-    AND_PERP far away, ugly, ants, water :-0.6
-] :0.9
-AND a rocky sahara climbing party :0.7
+    electrical pole voyage
+    AND_SALT small nocturne companion
+]
+AND_SALT [
+    electrical tornado
+    AND_SALT electric arcs, bzzz, sparks
+]
 ```
 
 To generate the final noise from the diffusion model, the extension will:
 
-1. Use the noise generated from the prompt `far away, ugly, ants, water :-0.6`
-2. Make it orthogonal to the combination of `cold blue Everest mountain :1` and `a beautiful woman climbing a massive rock wall :1.1`
-3. Add this orthogonal noise to the combined prompts it was orthogonalized against
-4. Make the resulting noise orthogonal to the combination of `a red hot desert canyon :1` and `a rocky Sahara climbing party :0.7`
-5. Add this orthogonal noise (multiplied by 0.9) to the combined prompts it was orthogonalized against
+1. It first processes the root `AND` prompts. In this case, it's just `magical tree forests, eternal city`
+2. It then processes the `AND_SALT` prompt `small nocturne companion` in the context of `electrical pole voyage`. This enhances salient features in the `electrical pole voyage` noise
+3. This new noise is orthogonalized with the noise from `magical tree forests, eternal city`, blending the details of the 'electrical pole voyage' into the main scene without creating conflicts
+4. The extension then turns to the second `AND_SALT` group. It processes `electric arcs, bzzz, sparks` in the context of `electrical tornado`, amplifying salient features in the electrical tornado noise
+5. The noise from this `AND_SALT` group is then combined with the noise of `magical tree forests, eternal city`. The final output retains the strongest features from both the `electrical tornado` (enhanced by 'electric arcs, bzzz, sparks') and the earlier 'magical tree forests, eternal city' scene influenced by the 'electrical pole voyage'
 
-The final single noise map is composed of all normal `AND` prompts combined with all orthogonalized `AND_PERP` prompts.
+Each keyword can define a distinct denoising space within its square brackets `[...]`. Prompts inside it merge into a single noise map before further processing down the prompt tree.
 
-Each instance of the `AND_PERP` keyword delineates a separate denoising space within its square brackets `[...]`. Prompts inside it merge into a single noise map before further processing down the prompt tree.
-
-Experimental evidence suggests that it's unnecessary to go beyond a depth of 2. We're still exploring if this adds to the precision of the generations. If you discover innovative ways of controlling the generations using nested `AND_PERP` prompts, please share in the discussions!
+While there's no strict limit on the depth of nesting, experimental evidence suggests that going beyond a depth of 2 is generally unnecessary. We're still exploring the added precision from deeper nesting. If you discover innovative ways of controlling the generations using nested prompts, please share in the discussions!
 
 ![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/f6d0c95b-8efd-4ce2-b5e4-928597facd34)
 
