@@ -51,9 +51,7 @@ a peaceful twilight beach scene
 AND_SALT a dazzling fireworks display in the sky
 ```
 
-In this case, the extension first generates noise for the prompts. It then identifies and isolates the most salient regions in the noise of the fireworks display prompt.
-
-Then, the extension applies this salient noise to the noise of the beach scene. Only the portions of the beach noise that coincide with the salient areas of the fireworks noise are affected. These areas are replaced by the salient noise from the fireworks display.
+In this case, the extension identifies and isolates the most salient regions in the noise of the fireworks display prompt. Then, the extension applies this salient noise to the noise of the beach scene. Only the portions of the beach noise that coincide with the salient areas of the fireworks noise are affected. These areas are replaced by the salient noise from the fireworks display.
 
 ![image](https://github.com/ljleb/sd-webui-neutral-prompt/assets/32277961/f3734a32-303c-4d4e-b1f3-57729383cc4c)
 
