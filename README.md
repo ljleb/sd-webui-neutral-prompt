@@ -1,6 +1,6 @@
 # Neutral Prompt
 
-Neutral prompt is an a1111 webui extension that enhances the webui's CFG denoising algorithm. It replaces the original algorithm with a higher-quality implementation based on more recent research.
+Neutral prompt is an a1111 webui extension that enhances the denoising algorithm of the webui. It replaces the original algorithm with a higher-quality implementation based on more recent research.
 
 ## Features
 
