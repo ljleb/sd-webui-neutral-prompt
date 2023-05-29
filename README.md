@@ -42,7 +42,7 @@ Key observations:
 
 ### Using the `AND_SALT` Keyword
 
-The `AND_SALT` keyword introduces a unique process called saliency-aware noise blending. It spotlights and accentuates areas of high-activation in the output.
+The `AND_SALT` keyword can be used to invoke saliency-aware noise blending. It spotlights and accentuates areas of high-activation in the output.
 
 Consider this example prompt utilizing `AND_SALT`:
 
