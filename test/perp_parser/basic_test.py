@@ -103,7 +103,10 @@ class TestPromptParser(unittest.TestCase):
         self.assertEqual(nested_child.prompt, "welcome ")
 
     def test_start_with_prompt_editing(self):
-        neutral_prompt_parser.parse_root("[(long shot:1.2):0.1] detail..")
+        prompt = "[(long shot:1.2):0.1] detail.."
+        res = neutral_prompt_parser.parse_root(prompt)
+        self.assertEqual(res.children[0].weight, 1.0)
+        self.assertEqual(res.children[0].prompt, prompt)
 
 
 if __name__ == '__main__':
