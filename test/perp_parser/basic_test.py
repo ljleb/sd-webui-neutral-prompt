@@ -102,6 +102,9 @@ class TestPromptParser(unittest.TestCase):
         self.assertEqual(nested_child.weight, 3.0)
         self.assertEqual(nested_child.prompt, "welcome ")
 
+    def test_start_with_prompt_editing(self):
+        neutral_prompt_parser.parse_root("[(long shot:1.2):0.1] detail..")
+
 
 if __name__ == '__main__':
     unittest.main()
