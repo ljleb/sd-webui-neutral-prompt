@@ -18,6 +18,9 @@ prompt_types = {
 @dataclasses.dataclass
 class AccordionInterface:
     def __post_init__(self):
+        self.is_rendered = False
+        self.events_registered = False
+
         self.cfg_rescale = gr.Slider(label='CFG rescale φ', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
         self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)'); self.neutral_prompt.unrender()
         self.neutral_cond_scale = gr.Slider(label='Prompt weight', minimum=-3, maximum=3, value=1); self.neutral_cond_scale.unrender()
@@ -25,6 +28,9 @@ class AccordionInterface:
         self.append_to_prompt_button = gr.Button(value='Apply to prompt'); self.append_to_prompt_button.unrender()
 
     def arrange_components(self, is_img2img: bool):
+        if self.is_rendered:
+            return
+
         with gr.Accordion(label='Neutral Prompt', open=False):
             self.cfg_rescale.render()
             with gr.Accordion(label='Prompt formatter', open=False):
@@ -33,13 +39,20 @@ class AccordionInterface:
                 self.aux_prompt_type.render()
                 self.append_to_prompt_button.render()
 
+        self.is_rendered = True
+
     def connect_events(self, is_img2img: bool):
+        if self.events_registered:
+            return
+
         prompt_textbox = img2img_prompt_textbox if is_img2img else txt2img_prompt_textbox
         self.append_to_prompt_button.click(
             fn=lambda init_prompt, prompt, scale, prompt_type: (f'{init_prompt}\n{prompt_types[prompt_type]} {prompt} :{scale}', ''),
             inputs=[prompt_textbox, self.neutral_prompt, self.neutral_cond_scale, self.aux_prompt_type],
             outputs=[prompt_textbox, self.neutral_prompt]
         )
+
+        self.events_registered = True
 
     def get_components(self) -> Tuple[gr.components.Component]:
         return (
