@@ -80,22 +80,22 @@ def parse_prompt(tokens: List[str], *, first: bool) -> PromptExpr:
         assert tokens[0] in prompt_keywords
         prompt_type = tokens.pop(0)
 
-    if tokens and tokens[0] == '[':
-        tokens.pop(0)
-        prompts = parse_prompts(tokens)
-        if tokens:
-            assert tokens.pop(0) == ']'
-        weight = parse_weight(tokens)
-        conciliation = ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None
-        return CompositePrompt(weight, prompts, conciliation)
-    else:
-        prompt_text, weight = parse_prompt_text(tokens)
-        prompt = LeafPrompt(weight, prompt_text)
-        if prompt_type in conciliation_strategies:
-            prompt.weight = 1.
-            prompt = CompositePrompt(weight, [prompt], ConciliationStrategy(prompt_type))
+        if tokens and tokens[0] == '[':
+            tokens.pop(0)
+            prompts = parse_prompts(tokens)
+            if tokens:
+                assert tokens.pop(0) == ']'
+            weight = parse_weight(tokens)
+            conciliation = ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None
+            return CompositePrompt(weight, prompts, conciliation)
 
-        return prompt
+    prompt_text, weight = parse_prompt_text(tokens)
+    prompt = LeafPrompt(weight, prompt_text)
+    if prompt_type in conciliation_strategies:
+        prompt.weight = 1.
+        prompt = CompositePrompt(weight, [prompt], ConciliationStrategy(prompt_type))
+
+    return prompt
 
 
 def parse_prompt_text(tokens: List[str]) -> Tuple[str, float]:
