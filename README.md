@@ -97,7 +97,7 @@ While there's no strict limit on the depth of nesting, experimental evidence sug
 
 ## Known issues
 
-- The webui doesn't support composable diffusion via [`AND`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features#composable-diffusion) for samplers DDIM, PLMS, and UniPC. As Perp-Neg relies on composable diffusion, the extension will revert to the unmodified sampler implementation when these are used.
+- The webui doesn't support composable diffusion via [`AND`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features#composable-diffusion) for samplers DDIM, PLMS, and UniPC. As the extension relies on composable diffusion, it will revert to the unmodified sampler implementation when these are used.
 
 ## Special Mentions
 
