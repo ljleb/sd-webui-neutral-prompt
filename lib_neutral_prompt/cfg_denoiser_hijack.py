@@ -1,3 +1,4 @@
+import torchvision
 from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, sd_samplers, shared
 from typing import Tuple, List
@@ -213,24 +214,51 @@ def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> t
 
 def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]]) -> torch.Tensor:
     """
-        Blends the `normal` tensor with `vectors` in salient regions, weighting contributions by their weights.
-        Salience maps are calculated to identify regions of interest.
-        The blended result combines `normal` and vector information in salient regions.
+    Blends the `normal` tensor with `vectors` in salient regions, weighting contributions by their weights.
+    Salience maps are calculated to identify regions of interest.
+    The blended result combines `normal` and vector information in salient regions.
     """
 
-    salience_maps = [get_salience(normal)] + [get_salience(vector) for vector, weight in vectors]
+    salience_maps = [get_salience(normal)] + [get_salience(vector, specific=False) for vector, weight in vectors]
     mask = torch.argmax(torch.stack(salience_maps, dim=0), dim=0)
 
     result = torch.zeros_like(normal)
     for mask_i, (vector, weight) in enumerate(vectors, start=1):
-        vector_mask = ((mask == mask_i).float())
+        vector_mask = (mask == mask_i).float()
+
+        blur = torchvision.transforms.GaussianBlur(3, 1.)
+
+        # vector_mask = blur(life(vector_mask))
+        # vector_mask = life(vector_mask)
+        vector_mask = life(vector_mask, lambda board, neighbors: ((board == 1) & (neighbors >= 3)).float())
+
         result += weight * vector_mask * (vector - normal)
 
     return result
 
 
-def get_salience(vector: torch.Tensor) -> torch.Tensor:
-    return torch.softmax(torch.abs(vector).flatten(), dim=0).reshape_as(vector)
+def life(board: torch.Tensor, rules = lambda board, neighbors: ((neighbors == 3) | ((board == 1) & (neighbors >= 3) & (neighbors <= 4))).float()):
+    # todo: maybe try to increase kernel size?
+    kernel = torch.tensor(
+        [[1, 1, 1],
+         [1, 0, 1],
+         [1, 1, 1]],
+        dtype=board.dtype,
+        device=board.device,
+    )
+    neighbors = torch.nn.functional.conv2d(
+        board.unsqueeze(0),
+        kernel.repeat(board.size(0), 1, 1).unsqueeze(0),
+        padding=1
+    ).squeeze(0)
+    return rules(board, neighbors)
+
+
+def get_salience(vector: torch.Tensor, specific: bool = False) -> torch.Tensor:
+    k = 1
+    if specific:
+        k = 50
+    return torch.softmax(k * torch.abs(vector).flatten(), dim=0).reshape_as(vector)
 
 
 sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
