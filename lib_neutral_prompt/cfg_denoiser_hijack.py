@@ -219,7 +219,7 @@ def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]
     The blended result combines `normal` and vector information in salient regions.
     """
 
-    salience_maps = [get_salience(normal)] + [get_salience(vector, specific=False) for vector, weight in vectors]
+    salience_maps = [get_salience(normal)] + [get_salience(vector, specific=True) for vector, weight in vectors]
     mask = torch.argmax(torch.stack(salience_maps, dim=0), dim=0)
 
     result = torch.zeros_like(normal)
@@ -230,34 +230,37 @@ def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]
 
         # vector_mask = blur(life(vector_mask))
         # vector_mask = life(vector_mask)
-        vector_mask = life(vector_mask, lambda board, neighbors: ((board == 1) & (neighbors >= 3)).float())
+        vector_mask = life(vector_mask, lambda board, neighbors: (board == 1) & (neighbors >= board.size(0) * 9 / 2))
 
         result += weight * vector_mask * (vector - normal)
 
     return result
 
 
-def life(board: torch.Tensor, rules = lambda board, neighbors: ((neighbors == 3) | ((board == 1) & (neighbors >= 3) & (neighbors <= 4))).float()):
-    # todo: maybe try to increase kernel size?
+def life(board: torch.Tensor, rules = None):
+    if rules is None:
+        rules = lambda board, neighbors: (neighbors == board.size(0) * 3) | ((board == 1) & (neighbors >= board.size(0) * 3) & (neighbors <= board.size(0) * 4))
     kernel = torch.tensor(
-        [[1, 1, 1],
-         [1, 0, 1],
-         [1, 1, 1]],
+        [[[1, 1, 1],
+          [1, 1, 1],
+          [1, 1, 1]]] * board.size(0),
         dtype=board.dtype,
         device=board.device,
     )
-    neighbors = torch.nn.functional.conv2d(
-        board.unsqueeze(0),
-        kernel.repeat(board.size(0), 1, 1).unsqueeze(0),
-        padding=1
-    ).squeeze(0)
-    return rules(board, neighbors)
+    padded_board = torch.concatenate([board.clone(), board[:-1].clone()], dim=0)
+    padded_board = torch.nn.functional.pad(padded_board, (1, 1, 1, 1, 0, 0), mode='constant', value=0)
+    neighbors = torch.nn.functional.conv3d(
+        padded_board.unsqueeze(0).unsqueeze(0),
+        kernel.unsqueeze(0).unsqueeze(0),
+        padding=0,
+    ).squeeze(0).squeeze(0)
+    return rules(board, neighbors - board).float()
 
 
 def get_salience(vector: torch.Tensor, specific: bool = False) -> torch.Tensor:
     k = 1
     if specific:
-        k = 50
+        k = 30
     return torch.softmax(k * torch.abs(vector).flatten(), dim=0).reshape_as(vector)
 
 
