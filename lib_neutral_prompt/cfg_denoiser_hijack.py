@@ -1,10 +1,10 @@
-import torchvision
 from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, sd_samplers, shared
 from typing import Tuple, List
 import dataclasses
 import functools
 import torch
+import torchvision
 import sys
 import textwrap
 
@@ -198,7 +198,14 @@ class AuxCondDeltaChildVisitor:
 
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
-        aux_cond_delta += salient_blend(cond_delta, salient_cond_deltas)
+        from lib_neutral_prompt import dev
+        dev.reload(dev)
+        aux_cond_delta += dev.salient_blend(cond_delta, salient_cond_deltas)
+
+        if isinstance(len(that.children) >= 2 and that.children[1], neutral_prompt_parser.CompositePrompt):
+            if len(dev.mask_images) == shared.state.sampling_steps:
+                dev.mask_images[0].save(rf'D:\sd\images-test\saliency-masks\{uuid.uuid4()}.gif', save_all=True, append_images=dev.mask_images[1:], duration=100, loop=0)
+
         return aux_cond_delta
 
 
@@ -210,6 +217,10 @@ def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> t
         return vector
 
     return vector - normal * torch.sum(normal * vector) / torch.norm(normal) ** 2
+
+
+mask_images = []
+import uuid
 
 
 def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]]) -> torch.Tensor:
@@ -230,8 +241,16 @@ def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]
 
         # vector_mask = blur(life(vector_mask))
         # vector_mask = life(vector_mask)
-        vector_mask = life(vector_mask, lambda board, neighbors: (board == 1) & (neighbors >= board.size(0) * 9 / 2))
+        for _ in range(2):
+            vector_mask = life(vector_mask, lambda board, neighbors: (board == 1) & (neighbors >= board.size(0) * 6))
 
+        display_mask = vector_mask[:3] + vector_mask[3] / 3
+        display_mask = torch.nn.functional.interpolate(display_mask.unsqueeze(0), scale_factor=8, mode='nearest-exact').squeeze(0)
+
+        if shared.state.sampling_step == 0 and len(mask_images) >= 2:
+            mask_images.clear()
+
+        mask_images.append(torchvision.transforms.functional.to_pil_image(display_mask))
         result += weight * vector_mask * (vector - normal)
 
     return result
@@ -260,7 +279,7 @@ def life(board: torch.Tensor, rules = None):
 def get_salience(vector: torch.Tensor, specific: bool = False) -> torch.Tensor:
     k = 1
     if specific:
-        k = 30
+        k = 20
     return torch.softmax(k * torch.abs(vector).flatten(), dim=0).reshape_as(vector)
 
 
