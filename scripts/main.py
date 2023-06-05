@@ -8,6 +8,7 @@ importlib.reload(cfg_denoiser_hijack)
 importlib.reload(ui)
 from modules import scripts, processing, shared
 from typing import Dict
+import functools
 
 
 class NeutralPromptScript(scripts.Script):
@@ -21,9 +22,13 @@ class NeutralPromptScript(scripts.Script):
         return scripts.AlwaysVisible
 
     def ui(self, is_img2img: bool):
+        self.hijack_composable_lora(is_img2img)
+
         self.accordion_interface.arrange_components(is_img2img)
         self.accordion_interface.connect_events(is_img2img)
         self.infotext_fields = self.accordion_interface.get_infotext_fields()
+        self.paste_field_names = self.accordion_interface.get_paste_field_names()
+        self.accordion_interface.set_rendered()
         return self.accordion_interface.get_components()
 
     def process(self, p: processing.StableDiffusionProcessing, *args):
@@ -44,3 +49,28 @@ class NeutralPromptScript(scripts.Script):
                 continue
 
             setattr(global_state, k, v)
+
+    def hijack_composable_lora(self, is_img2img):
+        if self.accordion_interface.is_rendered:
+            return
+
+        lora_script = None
+        script_runner = scripts.scripts_img2img if is_img2img else scripts.scripts_txt2img
+
+        for script in script_runner.alwayson_scripts:
+            if script.title().lower() == "composable lora":
+                lora_script = script
+                break
+
+        if lora_script is not None:
+            lora_script.process = functools.partial(composable_lora_process_hijack, original_function=lora_script.process)
+
+
+def composable_lora_process_hijack(p: processing.StableDiffusionProcessing, *args, original_function, **kwargs):
+    if not global_state.is_enabled:
+        return original_function(p, *args, **kwargs)
+
+    prompt_parser_hijack.register_prompts(p.all_prompts)
+    all_prompts, p.all_prompts = p.all_prompts, prompt_parser_hijack.transpile_prompts()
+    original_function(p, *args, **kwargs)
+    p.all_prompts = all_prompts

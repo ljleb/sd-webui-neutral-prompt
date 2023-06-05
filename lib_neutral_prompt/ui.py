@@ -1,6 +1,6 @@
 from lib_neutral_prompt import global_state, neutral_prompt_parser
 from modules import script_callbacks, shared
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import gradio as gr
 import dataclasses
 
@@ -19,7 +19,6 @@ prompt_types = {
 class AccordionInterface:
     def __post_init__(self):
         self.is_rendered = False
-        self.events_registered = False
 
         self.cfg_rescale = gr.Slider(label='CFG rescale φ', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
         self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)'); self.neutral_prompt.unrender()
@@ -39,10 +38,8 @@ class AccordionInterface:
                 self.aux_prompt_type.render()
                 self.append_to_prompt_button.render()
 
-        self.is_rendered = True
-
     def connect_events(self, is_img2img: bool):
-        if self.events_registered:
+        if self.is_rendered:
             return
 
         prompt_textbox = img2img_prompt_textbox if is_img2img else txt2img_prompt_textbox
@@ -52,7 +49,8 @@ class AccordionInterface:
             outputs=[prompt_textbox, self.neutral_prompt]
         )
 
-        self.events_registered = True
+    def set_rendered(self, value: bool = True):
+        self.is_rendered = value
 
     def get_components(self) -> Tuple[gr.components.Component]:
         return (
@@ -63,6 +61,11 @@ class AccordionInterface:
         return tuple(zip(self.get_components(), (
             'CFG Rescale φ',
         )))
+
+    def get_paste_field_names(self) -> List[str]:
+        return [
+            'CFG Rescale φ',
+        ]
 
     def get_extra_generation_params(self, args: Dict) -> Dict:
         return {
