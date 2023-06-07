@@ -70,7 +70,8 @@ def composable_lora_process_hijack(p: processing.StableDiffusionProcessing, *arg
     if not global_state.is_enabled:
         return original_function(p, *args, **kwargs)
 
-    prompt_parser_hijack.register_prompts(p.all_prompts)
-    all_prompts, p.all_prompts = p.all_prompts, prompt_parser_hijack.transpile_prompts()
+    exprs = prompt_parser_hijack.parse_prompts(p.all_prompts)
+    all_prompts, p.all_prompts = p.all_prompts, prompt_parser_hijack.transpile_exprs(exprs)
     original_function(p, *args, **kwargs)
+    # restore original prompts
     p.all_prompts = all_prompts

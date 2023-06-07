@@ -17,20 +17,22 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
     if not global_state.is_enabled:
         return original_function(model, prompts, steps)
 
-    register_prompts(prompts)
-    return original_function(model, transpile_prompts(), steps)
+    global_state.prompt_exprs = parse_prompts(prompts)
+    return original_function(model, transpile_exprs(global_state.prompt_exprs), steps)
 
 
-def register_prompts(prompts: List[str]):
-    global_state.prompt_exprs.clear()
+def parse_prompts(prompts: List[str]) -> neutral_prompt_parser.PromptExpr:
+    exprs = []
     for prompt in prompts:
         expr = neutral_prompt_parser.parse_root(prompt)
-        global_state.prompt_exprs.append(expr)
+        exprs.append(expr)
+
+    return exprs
 
 
-def transpile_prompts():
+def transpile_exprs(exprs: neutral_prompt_parser.PromptExpr):
     webui_prompts = []
-    for expr in global_state.prompt_exprs:
+    for expr in exprs:
         webui_prompts.append(expr.accept(WebuiPromptVisitor()))
 
     return webui_prompts
