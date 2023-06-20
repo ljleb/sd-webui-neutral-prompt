@@ -1,3 +1,5 @@
+from typing import List
+
 from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, prompt_parser
 import re
@@ -15,14 +17,25 @@ def get_multicond_learned_conditioning_hijack(model, prompts, steps, original_fu
     if not global_state.is_enabled:
         return original_function(model, prompts, steps)
 
-    global_state.prompt_exprs.clear()
-    webui_prompts = []
+    global_state.prompt_exprs = parse_prompts(prompts)
+    return original_function(model, transpile_exprs(global_state.prompt_exprs), steps)
+
+
+def parse_prompts(prompts: List[str]) -> neutral_prompt_parser.PromptExpr:
+    exprs = []
     for prompt in prompts:
         expr = neutral_prompt_parser.parse_root(prompt)
-        global_state.prompt_exprs.append(expr)
+        exprs.append(expr)
+
+    return exprs
+
+
+def transpile_exprs(exprs: neutral_prompt_parser.PromptExpr):
+    webui_prompts = []
+    for expr in exprs:
         webui_prompts.append(expr.accept(WebuiPromptVisitor()))
 
-    return original_function(model, webui_prompts, steps)
+    return webui_prompts
 
 
 class WebuiPromptVisitor:
