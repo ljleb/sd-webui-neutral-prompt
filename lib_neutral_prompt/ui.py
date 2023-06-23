@@ -20,7 +20,7 @@ class AccordionInterface:
     def __post_init__(self):
         self.is_rendered = False
 
-        self.cfg_rescale = gr.Slider(label='CFG rescale φ', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
+        self.cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
         self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)'); self.neutral_prompt.unrender()
         self.neutral_cond_scale = gr.Slider(label='Prompt weight', minimum=-3, maximum=3, value=1); self.neutral_cond_scale.unrender()
         self.aux_prompt_type = gr.Dropdown(label='Prompt type', choices=list(prompt_types.keys()), value=next(iter(prompt_types.keys())))
@@ -59,17 +59,17 @@ class AccordionInterface:
 
     def get_infotext_fields(self) -> Tuple[Tuple[gr.components.Component, str]]:
         return tuple(zip(self.get_components(), (
-            'CFG Rescale φ',
+            'CFG Rescale phi',
         )))
 
     def get_paste_field_names(self) -> List[str]:
         return [
-            'CFG Rescale φ',
+            'CFG Rescale phi',
         ]
 
     def get_extra_generation_params(self, args: Dict) -> Dict:
         return {
-            'CFG Rescale φ': args['cfg_rescale'],
+            'CFG Rescale phi': args['cfg_rescale'],
         }
 
     def unpack_processing_args(
