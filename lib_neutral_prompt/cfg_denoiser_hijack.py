@@ -194,6 +194,8 @@ class AuxCondDeltaChildVisitor:
                     aux_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
                 elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SALIENCE_MASK:
                     salient_cond_deltas.append((child_cond_delta, child.weight))
+                elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SEMANTIC_GUIDANCE:
+                    aux_cond_delta += child.weight * get_semantic_cond_delta(cond_delta, child_cond_delta)
 
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
@@ -231,6 +233,12 @@ def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]
 
 def get_salience(vector: torch.Tensor) -> torch.Tensor:
     return torch.softmax(torch.abs(vector).flatten(), dim=0).reshape_as(vector)
+
+
+def get_semantic_cond_delta(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
+    k = int(torch.numel(vector) * 0.95)
+    top_k, _ = torch.kthvalue(torch.abs(torch.flatten(vector)), k)
+    return vector * (torch.abs(vector) >= top_k).to(vector.dtype)
 
 
 sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(

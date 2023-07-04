@@ -26,6 +26,7 @@ class PromptKeyword(Enum):
     AND = 'AND'
     AND_PERP = 'AND_PERP'
     AND_SALT = 'AND_SALT'
+    AND_SEGA = 'AND_SEGA'
 
 
 prompt_keywords = [e.value for e in PromptKeyword]
@@ -34,6 +35,7 @@ prompt_keywords = [e.value for e in PromptKeyword]
 class ConciliationStrategy(Enum):
     PERPENDICULAR = PromptKeyword.AND_PERP.value
     SALIENCE_MASK = PromptKeyword.AND_SALT.value
+    SEMANTIC_GUIDANCE = PromptKeyword.AND_SEGA.value
 
 
 conciliation_strategies = [e.value for e in ConciliationStrategy]
@@ -136,7 +138,8 @@ def parse_weight(tokens: List[str]) -> float:
 
 def tokenize(s: str):
     s = re.sub(r'\s+', ' ', s).strip()
-    return [s for s in re.split(r'(\[|\]|:|\bAND_PERP\b|\bAND_SALT\b|\bAND\b)', s) if s.strip()]
+    prompt_keywords_regex = '|'.join(rf'\b{keyword}\b' for keyword in prompt_keywords)
+    return [s for s in re.split(rf'(\[|\]|:|{prompt_keywords_regex})', s) if s.strip()]
 
 
 def is_float(string: str) -> bool:
