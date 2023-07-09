@@ -37,7 +37,7 @@ This is an XY grid with prompt S/R `AND, AND_PERP`:
 Key observations:
 
 - The `AND_PERP` images exhibit a higher dynamic range compared to the `AND` images.
-- The `AND` images sometimes struggle to depict a castle, a challenge not encountered by the `AND_PERP` images.
+- Since the prompts have a lot of overlap, the `AND` images sometimes struggle to depict a castle. This isn't a problem for the `AND_PERP` images.
 - The `AND` images tend to lean towards a purple color, because this was the path of least resistance between the two opposing prompts during generation. In contrast, the `AND_PERP` images, free from this tug-of-war, present a clearer representation.
 
 ### Using the `AND_SALT` Keyword
