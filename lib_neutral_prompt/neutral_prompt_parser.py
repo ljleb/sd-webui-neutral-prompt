@@ -26,7 +26,7 @@ class PromptKeyword(Enum):
     AND = 'AND'
     AND_PERP = 'AND_PERP'
     AND_SALT = 'AND_SALT'
-    AND_SEGA = 'AND_SEGA'
+    AND_TOPK = 'AND_TOPK'
 
 
 prompt_keywords = [e.value for e in PromptKeyword]
@@ -35,7 +35,7 @@ prompt_keywords = [e.value for e in PromptKeyword]
 class ConciliationStrategy(Enum):
     PERPENDICULAR = PromptKeyword.AND_PERP.value
     SALIENCE_MASK = PromptKeyword.AND_SALT.value
-    SEMANTIC_GUIDANCE = PromptKeyword.AND_SEGA.value
+    SEMANTIC_GUIDANCE = PromptKeyword.AND_TOPK.value
 
 
 conciliation_strategies = [e.value for e in ConciliationStrategy]
