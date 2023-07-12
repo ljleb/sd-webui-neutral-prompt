@@ -12,6 +12,7 @@ img2img_prompt_textbox = None
 prompt_types = {
     'Perpendicular': neutral_prompt_parser.PromptKeyword.AND_PERP.value,
     'Saliency-aware': neutral_prompt_parser.PromptKeyword.AND_SALT.value,
+    'Semantic guidance top-k': neutral_prompt_parser.PromptKeyword.AND_TOPK.value,
 }
 
 
