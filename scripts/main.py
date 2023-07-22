@@ -1,11 +1,4 @@
 from lib_neutral_prompt import global_state, hijacker, neutral_prompt_parser, prompt_parser_hijack, cfg_denoiser_hijack, ui
-import importlib
-importlib.reload(global_state)
-importlib.reload(hijacker)
-importlib.reload(neutral_prompt_parser)
-importlib.reload(prompt_parser_hijack)
-importlib.reload(cfg_denoiser_hijack)
-importlib.reload(ui)
 from modules import scripts, processing, shared
 from typing import Dict
 import functools
