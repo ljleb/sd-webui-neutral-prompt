@@ -85,9 +85,15 @@ class AccordionInterface:
 def on_ui_settings():
     section = ('neutral_prompt', 'Neutral Prompt')
     shared.opts.add_option('neutral_prompt_enabled', shared.OptionInfo(True, 'Enable neutral-prompt extension', section=section))
+    shared.opts.add_option('neutral_prompt_verbose', shared.OptionInfo(False, 'Enable verbose debugging for neutral-prompt', section=section))
+    shared.opts.onchange('neutral_prompt_verbose', update_verbose)
 
 
 script_callbacks.on_ui_settings(on_ui_settings)
+
+
+def update_verbose():
+    global_state.verbose = shared.opts.data.get('neutral_prompt_verbose', False)
 
 
 def on_after_component(component, **_kwargs):
