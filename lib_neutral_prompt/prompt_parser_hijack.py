@@ -18,7 +18,7 @@ prompt_parser.re_weight = re.compile(r"^(\s*.*?)(?:\s*:\s*([-+]?(?:\d+\.?|\d*\.\
 
 
 @prompt_parser_hijacker.hijack('get_multicond_prompt_list')
-def get_multicond_learned_conditioning_hijack(prompts, original_function):
+def get_multicond_prompt_list_hijack(prompts, original_function):
     if not global_state.is_enabled:
         return original_function(prompts)
 
