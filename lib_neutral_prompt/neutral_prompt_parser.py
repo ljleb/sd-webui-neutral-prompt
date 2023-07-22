@@ -137,7 +137,6 @@ def parse_weight(tokens: List[str]) -> float:
 
 
 def tokenize(s: str):
-    s = re.sub(r'\s+', ' ', s).strip()
     prompt_keywords_regex = '|'.join(rf'\b{keyword}\b' for keyword in prompt_keywords)
     return [s for s in re.split(rf'(\[|\]|:|{prompt_keywords_regex})', s) if s.strip()]
 
