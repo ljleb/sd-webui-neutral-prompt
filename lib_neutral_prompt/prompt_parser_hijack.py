@@ -12,7 +12,7 @@ prompt_parser_hijacker = hijacker.ModuleHijacker.install_or_get(
 )
 
 
-# the only difference with the original is the prefix `\s*` in `^(\s*.*?)` (originally `^(.*?)`)
+# the only difference with the original `re_weight` is the prefix `\s*` in `^(\s*.*?)` (originally `^(.*?)`)
 # this makes it possible to line break AND prompts without replacing all newlines with normal spaces
 prompt_parser.re_weight = re.compile(r"^(\s*.*?)(?:\s*:\s*([-+]?(?:\d+\.?|\d*\.\d+)))?\s*$")
 
