@@ -2,7 +2,6 @@ from typing import List
 
 from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, prompt_parser
-import re
 
 
 prompt_parser_hijacker = hijacker.ModuleHijacker.install_or_get(
@@ -10,11 +9,6 @@ prompt_parser_hijacker = hijacker.ModuleHijacker.install_or_get(
     hijacker_attribute='__neutral_prompt_hijacker',
     on_uninstall=script_callbacks.on_script_unloaded,
 )
-
-
-# the only difference with the original `re_weight` is the prefix `\s*` in `^(\s*.*?)` (originally `^(.*?)`)
-# this makes it possible to line break AND prompts without replacing all newlines with normal spaces
-prompt_parser.re_weight = re.compile(r"^((?:\s|.)*?)(?:\s*:\s*([-+]?(?:\d+\.?|\d*\.\d+)))?\s*$")
 
 
 @prompt_parser_hijacker.hijack('get_multicond_prompt_list')
