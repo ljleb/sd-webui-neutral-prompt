@@ -17,7 +17,11 @@ def get_multicond_prompt_list_hijack(prompts, original_function):
         return original_function(prompts)
 
     global_state.prompt_exprs = parse_prompts(prompts)
-    return original_function(transpile_exprs(global_state.prompt_exprs))
+    webui_prompts = transpile_exprs(global_state.prompt_exprs)
+    if isinstance(prompts, getattr(prompt_parser, 'SdConditioning', type(None))):
+        webui_prompts = prompt_parser.SdConditioning(webui_prompts, copy_from=prompts)
+
+    return original_function(webui_prompts)
 
 
 def parse_prompts(prompts: List[str]) -> neutral_prompt_parser.PromptExpr:
