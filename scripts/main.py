@@ -28,7 +28,8 @@ class NeutralPromptScript(scripts.Script):
         args = self.accordion_interface.unpack_processing_args(*args)
 
         self.update_global_state(args)
-        p.extra_generation_params.update(self.accordion_interface.get_extra_generation_params(args))
+        if global_state.is_enabled:
+            p.extra_generation_params.update(self.accordion_interface.get_extra_generation_params(args))
 
     def update_global_state(self, args: Dict):
         if shared.state.job_no > 0:
