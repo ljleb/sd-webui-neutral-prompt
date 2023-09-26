@@ -8,6 +8,23 @@ import sys
 import textwrap
 
 
+class CFGRescaleFactorSingleton:
+    _instance = None
+    cfg_rescale_factor = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(CFGRescaleFactorSingleton, cls).__new__(cls)
+        return cls._instance
+
+    @classmethod
+    def set_cfg_rescale_factor(cls, value):
+        cls.cfg_rescale_factor = value
+
+    @classmethod
+    def get_cfg_rescale_factor(cls):
+        return cls.cfg_rescale_factor
+
 def combine_denoised_hijack(
     x_out: torch.Tensor,
     batch_cond_indices: List[List[Tuple[int, float]]],
@@ -55,7 +72,9 @@ def get_webui_denoised(
 
 
 def get_cfg_rescale_factor(cfg_cond, cond):
-    return global_state.cfg_rescale * (torch.std(cond) / torch.std(cfg_cond) - 1) + 1
+    cfg_rescale_factor = global_state.cfg_rescale * (torch.std(cond).item() / torch.std(cfg_cond).item() - 1) + 1
+    CFGRescaleFactorSingleton.set_cfg_rescale_factor(cfg_rescale_factor)
+    return cfg_rescale_factor
 
 
 @dataclasses.dataclass
