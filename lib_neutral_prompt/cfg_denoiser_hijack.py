@@ -55,6 +55,7 @@ def get_webui_denoised(
 
 
 def get_cfg_rescale_factor(cfg_cond, cond):
+    global_state.apply_and_clear_cfg_rescale_override()
     return global_state.cfg_rescale * (torch.std(cond) / torch.std(cfg_cond) - 1) + 1
 
 
