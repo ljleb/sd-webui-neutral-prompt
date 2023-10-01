@@ -1,6 +1,6 @@
 from lib_neutral_prompt import global_state, neutral_prompt_parser
 from modules import script_callbacks, shared
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Callable
 import gradio as gr
 import dataclasses
 
@@ -14,19 +14,26 @@ prompt_types = {
     'Saliency-aware': neutral_prompt_parser.PromptKeyword.AND_SALT.value,
     'Semantic guidance top-k': neutral_prompt_parser.PromptKeyword.AND_TOPK.value,
 }
+prompt_types_tooltip = '\n'.join([
+    'AND - add all prompt features equally (webui builtin)',
+    'Perpendicular - reduce the impact of contradicting prompt features',
+    'Saliency-aware - strongest prompt features win',
+    'Semantic guidance top-k - small targeted changes',
+])
 
-prompt_types_tooltip = 'AND - greedy and takes as much space as possible \nPerpendicular - integrates in less colliding regions if any\nSaliency-aware - strongest prompt features win\nSemantic guidance top-k - small targeted changes'
 
 @dataclasses.dataclass
 class AccordionInterface:
+    get_elem_id: Callable
+
     def __post_init__(self):
         self.is_rendered = False
 
-        self.cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
-        self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)'); self.neutral_prompt.unrender()
-        self.neutral_cond_scale = gr.Slider(label='Prompt weight', minimum=-3, maximum=3, value=1); self.neutral_cond_scale.unrender()
-        self.aux_prompt_type = gr.Dropdown(label='Prompt type', choices=list(prompt_types.keys()), value=next(iter(prompt_types.keys())),tooltip=prompt_types_tooltip,elem_id='natural-prompt-type')
-        self.append_to_prompt_button = gr.Button(value='Apply to prompt'); self.append_to_prompt_button.unrender()
+        self.cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0)
+        self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)')
+        self.neutral_cond_scale = gr.Slider(label='Prompt weight', minimum=-3, maximum=3, value=1)
+        self.aux_prompt_type = gr.Dropdown(label='Prompt type', choices=list(prompt_types.keys()), value=next(iter(prompt_types.keys())), tooltip=prompt_types_tooltip, elem_id=self.get_elem_id('formatter_prompt_type'))
+        self.append_to_prompt_button = gr.Button(value='Apply to prompt')
 
     def arrange_components(self, is_img2img: bool):
         if self.is_rendered:
@@ -85,8 +92,10 @@ class AccordionInterface:
 
 def on_ui_settings():
     section = ('neutral_prompt', 'Neutral Prompt')
+
     shared.opts.add_option('neutral_prompt_enabled', shared.OptionInfo(True, 'Enable neutral-prompt extension', section=section))
     global_state.is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
+
     shared.opts.add_option('neutral_prompt_verbose', shared.OptionInfo(False, 'Enable verbose debugging for neutral-prompt', section=section))
     shared.opts.onchange('neutral_prompt_verbose', update_verbose)
 
