@@ -15,6 +15,7 @@ prompt_types = {
     'Semantic guidance top-k': neutral_prompt_parser.PromptKeyword.AND_TOPK.value,
 }
 
+prompt_types_tooltip = 'AND - greedy and takes as much space as possible \nPerpendicular - integrates in less colliding regions if any\nSaliency-aware - strongest prompt features win\nSemantic guidance top-k - small targeted changes'
 
 @dataclasses.dataclass
 class AccordionInterface:
@@ -24,7 +25,7 @@ class AccordionInterface:
         self.cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0); self.cfg_rescale.unrender()
         self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)'); self.neutral_prompt.unrender()
         self.neutral_cond_scale = gr.Slider(label='Prompt weight', minimum=-3, maximum=3, value=1); self.neutral_cond_scale.unrender()
-        self.aux_prompt_type = gr.Dropdown(label='Prompt type', choices=list(prompt_types.keys()), value=next(iter(prompt_types.keys())))
+        self.aux_prompt_type = gr.Dropdown(label='Prompt type', choices=list(prompt_types.keys()), value=next(iter(prompt_types.keys())),tooltip=prompt_types_tooltip,elem_id='natural-prompt-type')
         self.append_to_prompt_button = gr.Button(value='Apply to prompt'); self.append_to_prompt_button.unrender()
 
     def arrange_components(self, is_img2img: bool):
