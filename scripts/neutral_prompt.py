@@ -1,4 +1,4 @@
-from lib_neutral_prompt import global_state, hijacker, neutral_prompt_parser, prompt_parser_hijack, cfg_denoiser_hijack, ui
+from lib_neutral_prompt import global_state, hijacker, neutral_prompt_parser, prompt_parser_hijack, cfg_denoiser_hijack, ui, xyz_grid
 from modules import scripts, processing, shared
 from typing import Dict
 import functools
@@ -43,14 +43,22 @@ class NeutralPromptScript(scripts.Script):
             p.extra_generation_params.update(self.accordion_interface.get_extra_generation_params(args))
 
     def update_global_state(self, args: Dict):
-        if shared.state.job_no > 0:
-            return
+        if shared.state.job_no == 0:
+            global_state.is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
 
-        global_state.is_enabled = shared.opts.data.get('neutral_prompt_enabled', True)
         for k, v in args.items():
             try:
                 getattr(global_state, k)
             except AttributeError:
+                continue
+
+            if getattr(getattr(global_state, k), 'is_xyz', False):
+                xyz_attr = getattr(global_state, k)
+                xyz_attr.is_xyz = False
+                args[k] = xyz_attr
+                continue
+
+            if shared.state.job_no > 0:
                 continue
 
             setattr(global_state, k, v)
@@ -81,3 +89,6 @@ def composable_lora_process_hijack(p: processing.StableDiffusionProcessing, *arg
     # restore original prompts
     p.all_prompts = all_prompts
     return res
+
+
+xyz_grid.patch()
