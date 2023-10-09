@@ -6,7 +6,18 @@ import functools
 
 class NeutralPromptScript(scripts.Script):
     def __init__(self):
-        self.accordion_interface = ui.AccordionInterface()
+        self.accordion_interface = None
+        self._is_img2img = False
+
+    @property
+    def is_img2img(self):
+        return self._is_img2img
+
+    @is_img2img.setter
+    def is_img2img(self, is_img2img):
+        self._is_img2img = is_img2img
+        if self.accordion_interface is None:
+            self.accordion_interface = ui.AccordionInterface(self.elem_id)
 
     def title(self) -> str:
         return "Neutral Prompt"
