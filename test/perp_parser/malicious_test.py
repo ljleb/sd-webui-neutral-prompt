@@ -143,6 +143,13 @@ class TestMaliciousPromptParser(unittest.TestCase):
         except Exception:
             self.fail("parse_root couldn't handle a string with repeating AND_PERP keyword.")
 
+    def test_square_weight_prompt(self):
+        prompt = "AND_PERP [weighted] you thought it was the end"
+        try:
+            self.parser.parse_root(prompt)
+        except Exception:
+            self.fail("parse_root couldn't handle a string starting with a square-weighted sub-prompt.")
+
 
 if __name__ == '__main__':
     unittest.main()
