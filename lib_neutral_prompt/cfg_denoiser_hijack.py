@@ -143,8 +143,9 @@ class CondDeltaVisitor:
             console_warn(f'''
                 An unexpected noise weight was encountered at prompt #{index}
                 Expected :{that.weight}, but got :{cond_info[1]}
-                This is likely due to another extension also monkey patching the webui noise blending function
-                Please open a github issue so that the conflict can be resolved
+                This is likely due to another extension also monkey patching the webui `combine_denoised` function
+                Please open a bug report here so that the conflict can be resolved:
+                https://github.com/ljleb/sd-webui-neutral-prompt/issues
             ''')
 
         return args.x_out[cond_info[0]] - args.uncond
@@ -221,7 +222,7 @@ def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]
         The blended result combines `normal` and vector information in salient regions.
     """
 
-    salience_maps = [get_salience(normal)] + [get_salience(vector) for vector, weight in vectors]
+    salience_maps = [get_salience(normal)] + [get_salience(vector) for vector, _ in vectors]
     mask = torch.argmax(torch.stack(salience_maps, dim=0), dim=0)
 
     result = torch.zeros_like(normal)

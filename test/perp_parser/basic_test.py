@@ -9,10 +9,10 @@ class TestPromptParser(unittest.TestCase):
     def setUp(self):
         self.simple_prompt = neutral_prompt_parser.parse_root("hello :1.0")
         self.and_prompt = neutral_prompt_parser.parse_root("hello AND goodbye :2.0")
-        self.and_perp_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_PERP [goodbye :2.0]")
-        self.and_salt_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_SALT [goodbye :2.0]")
-        self.nested_and_perp_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_PERP [goodbye :2.0 AND_PERP [welcome :3.0]]")
-        self.nested_and_salt_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_SALT [goodbye :2.0 AND_SALT [welcome :3.0]]")
+        self.and_perp_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_PERP goodbye :2.0")
+        self.and_salt_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_SALT goodbye :2.0")
+        self.nested_and_perp_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_PERP [goodbye :2.0 AND_PERP welcome :3.0]")
+        self.nested_and_salt_prompt = neutral_prompt_parser.parse_root("hello :1.0 AND_SALT [goodbye :2.0 AND_SALT welcome :3.0]")
         self.invalid_weight = neutral_prompt_parser.parse_root("hello :not_a_float")
 
     def test_simple_prompt_child_count(self):
@@ -41,9 +41,9 @@ class TestPromptParser(unittest.TestCase):
         self.assertIsInstance(self.and_perp_prompt.children[1], neutral_prompt_parser.CompositePrompt)
 
     def test_and_perp_prompt_nested_child(self):
-        nested_child = self.and_perp_prompt.children[1].children[0]
+        nested_child = self.and_perp_prompt.children[1]
         self.assertEqual(nested_child.weight, 2.0)
-        self.assertEqual(nested_child.prompt, "goodbye ")
+        self.assertEqual(nested_child.children[0].prompt.strip(), "goodbye")
 
     def test_nested_and_perp_prompt_child_count(self):
         self.assertEqual(len(self.nested_and_perp_prompt.children), 2)
@@ -59,9 +59,9 @@ class TestPromptParser(unittest.TestCase):
         self.assertIsInstance(nested_child, neutral_prompt_parser.CompositePrompt)
 
     def test_nested_and_perp_prompt_nested_child(self):
-        nested_child = self.nested_and_perp_prompt.children[1].children[1].children[0]
+        nested_child = self.nested_and_perp_prompt.children[1].children[1]
         self.assertEqual(nested_child.weight, 3.0)
-        self.assertEqual(nested_child.prompt, "welcome ")
+        self.assertEqual(nested_child.children[0].prompt.strip(), "welcome")
 
     def test_invalid_weight_child_count(self):
         self.assertEqual(len(self.invalid_weight.children), 1)
@@ -80,9 +80,9 @@ class TestPromptParser(unittest.TestCase):
         self.assertIsInstance(self.and_salt_prompt.children[1], neutral_prompt_parser.CompositePrompt)
 
     def test_and_salt_prompt_nested_child(self):
-        nested_child = self.and_salt_prompt.children[1].children[0]
+        nested_child = self.and_salt_prompt.children[1]
         self.assertEqual(nested_child.weight, 2.0)
-        self.assertEqual(nested_child.prompt, "goodbye ")
+        self.assertEqual(nested_child.children[0].prompt.strip(), "goodbye")
 
     def test_nested_and_salt_prompt_child_count(self):
         self.assertEqual(len(self.nested_and_salt_prompt.children), 2)
@@ -98,9 +98,9 @@ class TestPromptParser(unittest.TestCase):
         self.assertIsInstance(nested_child, neutral_prompt_parser.CompositePrompt)
 
     def test_nested_and_salt_prompt_nested_child(self):
-        nested_child = self.nested_and_salt_prompt.children[1].children[1].children[0]
+        nested_child = self.nested_and_salt_prompt.children[1].children[1]
         self.assertEqual(nested_child.weight, 3.0)
-        self.assertEqual(nested_child.prompt, "welcome ")
+        self.assertEqual(nested_child.children[0].prompt.strip(), "welcome")
 
     def test_start_with_prompt_editing(self):
         prompt = "[(long shot:1.2):0.1] detail.."

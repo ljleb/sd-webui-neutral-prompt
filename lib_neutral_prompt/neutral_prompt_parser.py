@@ -64,37 +64,38 @@ def parse_root(string: str) -> CompositePrompt:
     return CompositePrompt(1., prompts, None)
 
 
-def parse_prompts(tokens: List[str]) -> List[PromptExpr]:
-    prompts = [parse_prompt(tokens, first=True)]
+def parse_prompts(tokens: List[str], *, nested: bool = False) -> List[PromptExpr]:
+    prompts = [parse_prompt(tokens, first=True, nested=nested)]
     while tokens:
         if tokens[0] in [']']:
             break
 
-        prompts.append(parse_prompt(tokens, first=False))
+        prompts.append(parse_prompt(tokens, first=False, nested=nested))
 
     return prompts
 
 
-def parse_prompt(tokens: List[str], *, first: bool) -> PromptExpr:
+def parse_prompt(tokens: List[str], *, first: bool, nested: bool = False) -> PromptExpr:
     if first:
         prompt_type = PromptKeyword.AND.value
-    else:
-        assert tokens[0] in prompt_keywords
+    elif tokens[0] in prompt_keywords:
         prompt_type = tokens.pop(0)
+    else:
+        prompt_type = PromptKeyword.AND.value
 
-        tokens_copy = tokens.copy()
-        if tokens_copy and tokens_copy[0] == '[':
-            tokens_copy.pop(0)
-            prompts = parse_prompts(tokens_copy)
-            if tokens_copy:
-                assert tokens_copy.pop(0) == ']'
-            if not tokens_copy or tokens_copy[0] in prompt_keywords + [']']:
-                tokens[:] = tokens_copy
-                weight = parse_weight(tokens)
-                conciliation = ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None
-                return CompositePrompt(weight, prompts, conciliation)
+    tokens_copy = tokens.copy()
+    if tokens_copy and tokens_copy[0] == '[':
+        tokens_copy.pop(0)
+        prompts = parse_prompts(tokens_copy, nested=True)
+        if tokens_copy:
+            assert tokens_copy.pop(0) == ']'
+        if len(prompts) > 1:
+            tokens[:] = tokens_copy
+            weight = parse_weight(tokens)
+            conciliation = ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None
+            return CompositePrompt(weight, prompts, conciliation)
 
-    prompt_text, weight = parse_prompt_text(tokens)
+    prompt_text, weight = parse_prompt_text(tokens, nested=nested)
     prompt = LeafPrompt(weight, prompt_text)
     if prompt_type in conciliation_strategies:
         prompt.weight = 1.
@@ -103,13 +104,15 @@ def parse_prompt(tokens: List[str], *, first: bool) -> PromptExpr:
     return prompt
 
 
-def parse_prompt_text(tokens: List[str]) -> Tuple[str, float]:
+def parse_prompt_text(tokens: List[str], *, nested: bool = False) -> Tuple[str, float]:
     text = ''
     depth = 0
     weight = 1.
     while tokens:
         if tokens[0] == ']':
             if depth == 0:
+                if not nested:
+                    text += tokens.pop(0)
                 break
             depth -= 1
         elif tokens[0] == '[':

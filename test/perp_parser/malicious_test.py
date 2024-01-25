@@ -26,8 +26,8 @@ class TestMaliciousPromptParser(unittest.TestCase):
     def test_erroneous_syntax(self):
         result = self.parser.parse_root("hello :1.0 AND_PERP [goodbye :2.0")
         self.assertEqual(result.children[0].weight, 1.0)
-        self.assertEqual(result.children[1].children[0].prompt, "goodbye ")
-        self.assertEqual(result.children[1].children[0].weight, 2.0)
+        self.assertEqual(result.children[1].children[0].prompt, "[goodbye ")
+        self.assertEqual(result.children[1].weight, 2.0)
 
         result = self.parser.parse_root("hello :1.0 AND_PERP goodbye :2.0]")
         self.assertEqual(result.children[0].weight, 1.0)
@@ -58,13 +58,13 @@ class TestMaliciousPromptParser(unittest.TestCase):
         self.assertIsInstance(result.children[1], neutral_prompt_parser.CompositePrompt)
 
     def test_complex_nested_prompts(self):
-        complex_prompt = "hello :1.0 AND goodbye :2.0 AND_PERP [welcome :3.0 AND farewell :4.0 AND_PERP [greetings :5.0]]"
+        complex_prompt = "hello :1.0 AND goodbye :2.0 AND_PERP [welcome :3.0 AND farewell :4.0 AND_PERP greetings:5.0]"
         result = self.parser.parse_root(complex_prompt)
         self.assertEqual(result.children[0].weight, 1.0)
         self.assertEqual(result.children[1].weight, 2.0)
         self.assertEqual(result.children[2].children[0].weight, 3.0)
         self.assertEqual(result.children[2].children[1].weight, 4.0)
-        self.assertEqual(result.children[2].children[2].children[0].weight, 5.0)
+        self.assertEqual(result.children[2].children[2].weight, 5.0)
 
     def test_string_with_random_characters(self):
         random_chars = "ASDFGHJKL:@#$/.,|}{><~`12[3]456AND_PERP7890"
