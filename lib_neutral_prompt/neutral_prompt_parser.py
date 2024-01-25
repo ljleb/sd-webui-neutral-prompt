@@ -61,13 +61,15 @@ class FlatSizeVisitor:
 def parse_root(string: str) -> CompositePrompt:
     tokens = tokenize(string)
     prompts = parse_prompts(tokens)
+    if len(prompts) == 1 and isinstance(prompts[0], CompositePrompt):
+        return prompts[0]
     return CompositePrompt(1., prompts, None)
 
 
 def parse_prompts(tokens: List[str], *, nested: bool = False) -> List[PromptExpr]:
     prompts = [parse_prompt(tokens, first=True, nested=nested)]
     while tokens:
-        if tokens[0] in [']']:
+        if nested and tokens[0] in [']']:
             break
 
         prompts.append(parse_prompt(tokens, first=False, nested=nested))
