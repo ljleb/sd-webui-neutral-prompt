@@ -23,10 +23,10 @@ def combine_denoised_hijack(
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
         args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
-        cond_delta = prompt.accept(CondDeltaChildVisitor(), args, 0)
-        aux_cond_delta = prompt.accept(AuxCondDeltaChildVisitor(), args, cond_delta, 0)
+        cond_delta = prompt.accept(CondDeltaVisitor(), args, 0)
+        aux_cond_delta = prompt.accept(AuxCondDeltaVisitor(), args, cond_delta, 0)
         cfg_cond = denoised[batch_i] + aux_cond_delta * cond_scale
-        denoised[batch_i] = cfg_cond * get_cfg_rescale_factor(cfg_cond, uncond[batch_i] + cond_delta + aux_cond_delta)
+        denoised[batch_i] = cfg_rescale(cfg_cond, uncond[batch_i] + cond_delta + aux_cond_delta)
 
     return denoised
 
@@ -41,22 +41,27 @@ def get_webui_denoised(
     uncond = x_out[-text_uncond.shape[0]:]
     sliced_batch_x_out = []
     sliced_batch_cond_indices = []
+    index_in = 0
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
         args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
-        sliced_x_out, sliced_cond_indices = prompt.accept(GatherWebuiCondsVisitor(), args, len(sliced_batch_x_out))
-        sliced_batch_cond_indices.append(sliced_cond_indices)
+        sliced_x_out, sliced_cond_indices = prompt.accept(GatherWebuiCondsVisitor(), args, index_in, len(sliced_batch_x_out))
+        if sliced_cond_indices:
+            sliced_batch_cond_indices.append(sliced_cond_indices)
         sliced_batch_x_out.extend(sliced_x_out)
+        index_in += prompt.accept(neutral_prompt_parser.FlatSizeVisitor())
 
     sliced_batch_x_out += list(uncond)
     sliced_batch_x_out = torch.stack(sliced_batch_x_out, dim=0)
-    sliced_batch_cond_indices = [il for il in sliced_batch_cond_indices if il]
     return original_function(sliced_batch_x_out, sliced_batch_cond_indices, text_uncond, cond_scale)
 
 
-def get_cfg_rescale_factor(cfg_cond, cond):
+def cfg_rescale(cfg_cond, cond):
     global_state.apply_and_clear_cfg_rescale_override()
-    return global_state.cfg_rescale * (torch.std(cond) / torch.std(cfg_cond) - 1) + 1
+    cfg_cond_mean = cfg_cond.mean()
+    cfg_resacle_mean = (1 - global_state.cfg_rescale) * cfg_cond_mean + global_state.cfg_rescale * cond.mean()
+    cfg_rescale_factor = global_state.cfg_rescale * (cond.std() / cfg_cond.std() - 1) + 1
+    return cfg_resacle_mean + (cfg_cond - cfg_cond_mean) * cfg_rescale_factor
 
 
 @dataclasses.dataclass
@@ -68,66 +73,35 @@ class CombineDenoiseArgs:
 
 @dataclasses.dataclass
 class GatherWebuiCondsVisitor:
-    def visit_leaf_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
-        return [], []
+    def visit_leaf_prompt(
+        self,
+        that: neutral_prompt_parser.CompositePrompt,
+        args: CombineDenoiseArgs,
+        index_in: int,
+        index_out: int,
+    ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
+        return [args.x_out[args.cond_indices[index_in][0]]], [(index_out, args.cond_indices[index_in][1])]
 
     def visit_composite_prompt(
         self,
         that: neutral_prompt_parser.CompositePrompt,
         args: CombineDenoiseArgs,
-        index_offset: int,
+        index_in: int,
+        index_out: int,
     ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
         sliced_x_out = []
         sliced_cond_indices = []
 
-        index_in = 0
         for child in that.children:
-            index_out = index_offset + len(sliced_x_out)
-            child_x_out, child_cond_indices = child.accept(GatherWebuiCondsVisitor.SingleCondVisitor(), args.x_out, args.cond_indices[index_in], index_out)
-            sliced_x_out.extend(child_x_out)
-            sliced_cond_indices.extend(child_cond_indices)
+            if child.conciliation is None:
+                index_offset = index_out + len(sliced_x_out)
+                child_x_out, child_cond_indices = child.accept(GatherWebuiCondsVisitor(), args, index_in, index_offset)
+                sliced_x_out.extend(child_x_out)
+                sliced_cond_indices.extend(child_cond_indices)
+
             index_in += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
         return sliced_x_out, sliced_cond_indices
-
-    @dataclasses.dataclass
-    class SingleCondVisitor:
-        def visit_leaf_prompt(
-            self,
-            that: neutral_prompt_parser.LeafPrompt,
-            x_out: torch.Tensor,
-            cond_info: Tuple[int, float],
-            index: int,
-        ) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
-            return [x_out[cond_info[0]]], [(index, cond_info[1])]
-
-        def visit_composite_prompt(self, *args, **kwargs) -> Tuple[List[torch.Tensor], List[Tuple[int, float]]]:
-            return [], []
-
-
-@dataclasses.dataclass
-class CondDeltaChildVisitor:
-    def visit_leaf_prompt(
-        self,
-        that: neutral_prompt_parser.LeafPrompt,
-        args: CombineDenoiseArgs,
-        index: int,
-    ) -> torch.Tensor:
-        return torch.zeros_like(args.x_out[0])
-
-    def visit_composite_prompt(
-        self,
-        that: neutral_prompt_parser.CompositePrompt,
-        args: CombineDenoiseArgs,
-        index: int,
-    ) -> torch.Tensor:
-        cond_delta = torch.zeros_like(args.x_out[0])
-
-        for child in that.children:
-            cond_delta += child.weight * child.accept(CondDeltaVisitor(), args, index)
-            index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
-
-        return cond_delta
 
 
 @dataclasses.dataclass
@@ -158,17 +132,19 @@ class CondDeltaVisitor:
     ) -> torch.Tensor:
         cond_delta = torch.zeros_like(args.x_out[0])
 
-        if that.conciliation is None:
-            for child in that.children:
-                child_cond_delta = child.accept(CondDeltaChildVisitor(), args, index)
-                child_cond_delta += child.accept(AuxCondDeltaChildVisitor(), args, child_cond_delta, index)
+        for child in that.children:
+            if child.conciliation is None:
+                child_cond_delta = child.accept(CondDeltaVisitor(), args, index)
+                child_cond_delta += child.accept(AuxCondDeltaVisitor(), args, child_cond_delta, index)
                 cond_delta += child.weight * child_cond_delta
+
+            index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
         return cond_delta
 
 
 @dataclasses.dataclass
-class AuxCondDeltaChildVisitor:
+class AuxCondDeltaVisitor:
     def visit_leaf_prompt(
         self,
         that: neutral_prompt_parser.LeafPrompt,
@@ -189,9 +165,10 @@ class AuxCondDeltaChildVisitor:
         salient_cond_deltas = []
 
         for child in that.children:
-            child_cond_delta = child.accept(CondDeltaChildVisitor(), args, index)
-            child_cond_delta += child.accept(self, args, child_cond_delta, index)
-            if isinstance(child, neutral_prompt_parser.CompositePrompt):
+            if child.conciliation is not None:
+                child_cond_delta = child.accept(CondDeltaVisitor(), args, index)
+                child_cond_delta += child.accept(AuxCondDeltaVisitor(), args, child_cond_delta, index)
+
                 if child.conciliation == neutral_prompt_parser.ConciliationStrategy.PERPENDICULAR:
                     aux_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
                 elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SALIENCE_MASK:
@@ -227,7 +204,7 @@ def salient_blend(normal: torch.Tensor, vectors: List[Tuple[torch.Tensor, float]
 
     result = torch.zeros_like(normal)
     for mask_i, (vector, weight) in enumerate(vectors, start=1):
-        vector_mask = ((mask == mask_i).float())
+        vector_mask = (mask == mask_i).float()
         result += weight * vector_mask * (vector - normal)
 
     return result

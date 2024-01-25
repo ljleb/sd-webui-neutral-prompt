@@ -5,23 +5,6 @@ from enum import Enum
 from typing import List, Tuple, Any, Optional
 
 
-@dataclasses.dataclass
-class PromptExpr(abc.ABC):
-    weight: float
-
-    @abc.abstractmethod
-    def accept(self, visitor, *args, **kwargs) -> Any:
-        pass
-
-
-@dataclasses.dataclass
-class LeafPrompt(PromptExpr):
-    prompt: str
-
-    def accept(self, visitor, *args, **kwargs):
-        return visitor.visit_leaf_prompt(self, *args, **kwargs)
-
-
 class PromptKeyword(Enum):
     AND = 'AND'
     AND_PERP = 'AND_PERP'
@@ -42,9 +25,26 @@ conciliation_strategies = [e.value for e in ConciliationStrategy]
 
 
 @dataclasses.dataclass
+class PromptExpr(abc.ABC):
+    weight: float
+    conciliation: Optional[ConciliationStrategy]
+
+    @abc.abstractmethod
+    def accept(self, visitor, *args, **kwargs) -> Any:
+        pass
+
+
+@dataclasses.dataclass
+class LeafPrompt(PromptExpr):
+    prompt: str
+
+    def accept(self, visitor, *args, **kwargs):
+        return visitor.visit_leaf_prompt(self, *args, **kwargs)
+
+
+@dataclasses.dataclass
 class CompositePrompt(PromptExpr):
     children: List[PromptExpr]
-    conciliation: Optional[ConciliationStrategy]
 
     def accept(self, visitor, *args, **kwargs):
         return visitor.visit_composite_prompt(self, *args, **kwargs)
@@ -61,9 +61,7 @@ class FlatSizeVisitor:
 def parse_root(string: str) -> CompositePrompt:
     tokens = tokenize(string)
     prompts = parse_prompts(tokens)
-    if len(prompts) == 1 and isinstance(prompts[0], CompositePrompt):
-        return prompts[0]
-    return CompositePrompt(1., prompts, None)
+    return CompositePrompt(1., None, prompts)
 
 
 def parse_prompts(tokens: List[str], *, nested: bool = False) -> List[PromptExpr]:
@@ -95,15 +93,10 @@ def parse_prompt(tokens: List[str], *, first: bool, nested: bool = False) -> Pro
             tokens[:] = tokens_copy
             weight = parse_weight(tokens)
             conciliation = ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None
-            return CompositePrompt(weight, prompts, conciliation)
+            return CompositePrompt(weight, conciliation, prompts)
 
     prompt_text, weight = parse_prompt_text(tokens, nested=nested)
-    prompt = LeafPrompt(weight, prompt_text)
-    if prompt_type in conciliation_strategies:
-        prompt.weight = 1.
-        prompt = CompositePrompt(weight, [prompt], ConciliationStrategy(prompt_type))
-
-    return prompt
+    return LeafPrompt(weight, ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None, prompt_text)
 
 
 def parse_prompt_text(tokens: List[str], *, nested: bool = False) -> Tuple[str, float]:
