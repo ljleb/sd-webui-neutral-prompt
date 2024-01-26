@@ -24,6 +24,11 @@ class TestPromptParser(unittest.TestCase):
     def test_simple_prompt_child_prompt(self):
         self.assertEqual(self.simple_prompt.children[0].prompt, "hello ")
 
+    def test_square_weight_prompt(self):
+        prompt = "a [b c d e : f g h :1.5]"
+        parsed = neutral_prompt_parser.parse_root(prompt)
+        self.assertEqual(parsed.children[0].prompt, prompt)
+
     def test_and_prompt_child_count(self):
         self.assertEqual(len(self.and_prompt.children), 2)
 
