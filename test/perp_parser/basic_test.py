@@ -29,6 +29,10 @@ class TestPromptParser(unittest.TestCase):
         parsed = neutral_prompt_parser.parse_root(prompt)
         self.assertEqual(parsed.children[0].prompt, prompt)
 
+        composed_prompt = f"{prompt} AND_PERP other prompt"
+        parsed = neutral_prompt_parser.parse_root(composed_prompt)
+        self.assertEqual(parsed.children[0].prompt, prompt)
+
     def test_and_prompt_child_count(self):
         self.assertEqual(len(self.and_prompt.children), 2)
 
