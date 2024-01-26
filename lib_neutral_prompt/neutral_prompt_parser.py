@@ -76,9 +76,7 @@ def parse_prompts(tokens: List[str], *, nested: bool = False) -> List[PromptExpr
 
 
 def parse_prompt(tokens: List[str], *, first: bool, nested: bool = False) -> PromptExpr:
-    if first:
-        prompt_type = PromptKeyword.AND.value
-    elif tokens[0] in prompt_keywords:
+    if not first and tokens[0] in prompt_keywords:
         prompt_type = tokens.pop(0)
     else:
         prompt_type = PromptKeyword.AND.value
@@ -106,10 +104,10 @@ def parse_prompt_text(tokens: List[str], *, nested: bool = False) -> Tuple[str, 
     while tokens:
         if tokens[0] == ']':
             if depth == 0:
-                if not nested:
-                    text += tokens.pop(0)
-                break
-            depth -= 1
+                if nested:
+                    break
+            else:
+                depth -= 1
         elif tokens[0] == '[':
             depth += 1
         elif tokens[0] == ':':
@@ -128,12 +126,9 @@ def parse_prompt_text(tokens: List[str], *, nested: bool = False) -> Tuple[str, 
 
 def parse_weight(tokens: List[str]) -> float:
     weight = 1.
-    if tokens and tokens[0] == ':':
+    if len(tokens) >= 2 and tokens[0] == ':' and is_float(tokens[1]):
         tokens.pop(0)
-        if tokens:
-            weight_str = tokens.pop(0)
-            if is_float(weight_str):
-                weight = float(weight_str)
+        weight = float(tokens.pop(0))
     return weight
 
 
