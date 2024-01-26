@@ -5,23 +5,6 @@ from enum import Enum
 from typing import List, Tuple, Any, Optional
 
 
-@dataclasses.dataclass
-class PromptExpr(abc.ABC):
-    weight: float
-
-    @abc.abstractmethod
-    def accept(self, visitor, *args, **kwargs) -> Any:
-        pass
-
-
-@dataclasses.dataclass
-class LeafPrompt(PromptExpr):
-    prompt: str
-
-    def accept(self, visitor, *args, **kwargs):
-        return visitor.visit_leaf_prompt(self, *args, **kwargs)
-
-
 class PromptKeyword(Enum):
     AND = 'AND'
     AND_PERP = 'AND_PERP'
@@ -42,9 +25,26 @@ conciliation_strategies = [e.value for e in ConciliationStrategy]
 
 
 @dataclasses.dataclass
+class PromptExpr(abc.ABC):
+    weight: float
+    conciliation: Optional[ConciliationStrategy]
+
+    @abc.abstractmethod
+    def accept(self, visitor, *args, **kwargs) -> Any:
+        pass
+
+
+@dataclasses.dataclass
+class LeafPrompt(PromptExpr):
+    prompt: str
+
+    def accept(self, visitor, *args, **kwargs):
+        return visitor.visit_leaf_prompt(self, *args, **kwargs)
+
+
+@dataclasses.dataclass
 class CompositePrompt(PromptExpr):
     children: List[PromptExpr]
-    conciliation: Optional[ConciliationStrategy]
 
     def accept(self, visitor, *args, **kwargs):
         return visitor.visit_composite_prompt(self, *args, **kwargs)
@@ -61,57 +61,53 @@ class FlatSizeVisitor:
 def parse_root(string: str) -> CompositePrompt:
     tokens = tokenize(string)
     prompts = parse_prompts(tokens)
-    return CompositePrompt(1., prompts, None)
+    return CompositePrompt(1., None, prompts)
 
 
-def parse_prompts(tokens: List[str]) -> List[PromptExpr]:
-    prompts = [parse_prompt(tokens, first=True)]
+def parse_prompts(tokens: List[str], *, nested: bool = False) -> List[PromptExpr]:
+    prompts = [parse_prompt(tokens, first=True, nested=nested)]
     while tokens:
-        if tokens[0] in [']']:
+        if nested and tokens[0] in [']']:
             break
 
-        prompts.append(parse_prompt(tokens, first=False))
+        prompts.append(parse_prompt(tokens, first=False, nested=nested))
 
     return prompts
 
 
-def parse_prompt(tokens: List[str], *, first: bool) -> PromptExpr:
-    if first:
-        prompt_type = PromptKeyword.AND.value
-    else:
-        assert tokens[0] in prompt_keywords
+def parse_prompt(tokens: List[str], *, first: bool, nested: bool = False) -> PromptExpr:
+    if not first and tokens[0] in prompt_keywords:
         prompt_type = tokens.pop(0)
+    else:
+        prompt_type = PromptKeyword.AND.value
 
-        tokens_copy = tokens.copy()
-        if tokens_copy and tokens_copy[0] == '[':
-            tokens_copy.pop(0)
-            prompts = parse_prompts(tokens_copy)
-            if tokens_copy:
-                assert tokens_copy.pop(0) == ']'
-            if not tokens_copy or tokens_copy[0] in prompt_keywords + [']']:
-                tokens[:] = tokens_copy
-                weight = parse_weight(tokens)
-                conciliation = ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None
-                return CompositePrompt(weight, prompts, conciliation)
+    tokens_copy = tokens.copy()
+    if tokens_copy and tokens_copy[0] == '[':
+        tokens_copy.pop(0)
+        prompts = parse_prompts(tokens_copy, nested=True)
+        if tokens_copy:
+            assert tokens_copy.pop(0) == ']'
+        if len(prompts) > 1:
+            tokens[:] = tokens_copy
+            weight = parse_weight(tokens)
+            conciliation = ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None
+            return CompositePrompt(weight, conciliation, prompts)
 
-    prompt_text, weight = parse_prompt_text(tokens)
-    prompt = LeafPrompt(weight, prompt_text)
-    if prompt_type in conciliation_strategies:
-        prompt.weight = 1.
-        prompt = CompositePrompt(weight, [prompt], ConciliationStrategy(prompt_type))
-
-    return prompt
+    prompt_text, weight = parse_prompt_text(tokens, nested=nested)
+    return LeafPrompt(weight, ConciliationStrategy(prompt_type) if prompt_type in conciliation_strategies else None, prompt_text)
 
 
-def parse_prompt_text(tokens: List[str]) -> Tuple[str, float]:
+def parse_prompt_text(tokens: List[str], *, nested: bool = False) -> Tuple[str, float]:
     text = ''
     depth = 0
     weight = 1.
     while tokens:
         if tokens[0] == ']':
             if depth == 0:
-                break
-            depth -= 1
+                if nested:
+                    break
+            else:
+                depth -= 1
         elif tokens[0] == '[':
             depth += 1
         elif tokens[0] == ':':
@@ -130,12 +126,9 @@ def parse_prompt_text(tokens: List[str]) -> Tuple[str, float]:
 
 def parse_weight(tokens: List[str]) -> float:
     weight = 1.
-    if tokens and tokens[0] == ':':
+    if len(tokens) >= 2 and tokens[0] == ':' and is_float(tokens[1]):
         tokens.pop(0)
-        if tokens:
-            weight_str = tokens.pop(0)
-            if is_float(weight_str):
-                weight = float(weight_str)
+        weight = float(tokens.pop(0))
     return weight
 
 
