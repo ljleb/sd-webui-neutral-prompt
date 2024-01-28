@@ -24,7 +24,7 @@ def get_multicond_prompt_list_hijack(prompts, original_function):
     return original_function(webui_prompts)
 
 
-def parse_prompts(prompts: List[str]) -> neutral_prompt_parser.PromptExpr:
+def parse_prompts(prompts: List[str]) -> List[neutral_prompt_parser.PromptExpr]:
     exprs = []
     for prompt in prompts:
         expr = neutral_prompt_parser.parse_root(prompt)
