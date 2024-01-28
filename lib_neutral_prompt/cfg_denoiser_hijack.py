@@ -41,15 +41,13 @@ def get_webui_denoised(
     uncond = x_out[-text_uncond.shape[0]:]
     sliced_batch_x_out = []
     sliced_batch_cond_indices = []
-    index_out = 0
 
     for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, batch_cond_indices)):
         args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
-        sliced_x_out, sliced_cond_indices = prompt.accept(GatherWebuiCondsVisitor(), args, 0, index_out)
+        sliced_x_out, sliced_cond_indices = prompt.accept(GatherWebuiCondsVisitor(), args, 0, len(sliced_batch_x_out))
         if sliced_cond_indices:
             sliced_batch_cond_indices.append(sliced_cond_indices)
         sliced_batch_x_out.extend(sliced_x_out)
-        index_out += prompt.accept(neutral_prompt_parser.FlatSizeVisitor())
 
     sliced_batch_x_out += list(uncond)
     sliced_batch_x_out = torch.stack(sliced_batch_x_out, dim=0)
