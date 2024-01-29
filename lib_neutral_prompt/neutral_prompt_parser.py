@@ -3,13 +3,14 @@ import dataclasses
 import re
 from enum import Enum
 from typing import List, Tuple, Any, Optional
+from itertools import product
 
 
 keyword_mapping = {
     'AND_PERP': 'PERPENDICULAR',
     'AND_SALT': 'SALIENCE_MASK',
     'AND_TOPK': 'SEMANTIC_GUIDANCE',
-}
+} | { f'AND_ALIGN_{i}_{j}':f'ALIGNMENT_BLEND_{i}_{j}' for i, j in product(range(2, 33), repeat=2) if i != j }
 
 
 PromptKeyword = Enum('PromptKeyword', { key:key for key in ['AND'] + list(keyword_mapping.keys()) })
