@@ -5,22 +5,18 @@ from enum import Enum
 from typing import List, Tuple, Any, Optional
 
 
-class PromptKeyword(Enum):
-    AND = 'AND'
-    AND_PERP = 'AND_PERP'
-    AND_SALT = 'AND_SALT'
-    AND_TOPK = 'AND_TOPK'
+keyword_mapping = {
+    'AND_PERP': 'PERPENDICULAR',
+    'AND_SALT': 'SALIENCE_MASK',
+    'AND_TOPK': 'SEMANTIC_GUIDANCE',
+}
+
+
+PromptKeyword = Enum('PromptKeyword', { key:key for key in ['AND'] + list(keyword_mapping.keys()) })
+ConciliationStrategy = Enum('ConciliationStrategy', { val:key for (key, val) in keyword_mapping.items() })
 
 
 prompt_keywords = [e.value for e in PromptKeyword]
-
-
-class ConciliationStrategy(Enum):
-    PERPENDICULAR = PromptKeyword.AND_PERP.value
-    SALIENCE_MASK = PromptKeyword.AND_SALT.value
-    SEMANTIC_GUIDANCE = PromptKeyword.AND_TOPK.value
-
-
 conciliation_strategies = [e.value for e in ConciliationStrategy]
 
 
