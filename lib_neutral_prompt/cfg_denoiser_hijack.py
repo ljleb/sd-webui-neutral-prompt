@@ -1,9 +1,10 @@
 from lib_neutral_prompt import hijacker, global_state, neutral_prompt_parser
 from modules import script_callbacks, sd_samplers, shared
-from typing import Tuple, List
+from typing import Tuple, List, Union
 import dataclasses
 import functools
 import torch
+import torch.nn.functional as F
 import sys
 import textwrap
 
@@ -25,6 +26,11 @@ def combine_denoised_hijack(
         args = CombineDenoiseArgs(x_out, uncond[batch_i], cond_indices)
         cond_delta = prompt.accept(CondDeltaVisitor(), args, 0)
         aux_cond_delta = prompt.accept(AuxCondDeltaVisitor(), args, cond_delta, 0)
+
+        if prompt.local_transform is not None:
+            cond_delta, weight = apply_masked_transform(cond_delta, prompt.local_transform)
+            aux_cond_delta = apply_affine_transform(aux_cond_delta, prompt.local_transform)
+
         cfg_cond = denoised[batch_i] + aux_cond_delta * cond_scale
         denoised[batch_i] = cfg_rescale(cfg_cond, uncond[batch_i] + cond_delta + aux_cond_delta)
 
@@ -83,15 +89,15 @@ def gather_webui_conds(
 
     for child in prompt.children:
         if child.conciliation is None:
-            if isinstance(child, neutral_prompt_parser.LeafPrompt):
+            if isinstance(child, neutral_prompt_parser.LeafPrompt) and child.local_transform is None:
                 child_x_out = args.x_out[index_in]
+                child_weight = child.weight
             else:
-                child_x_out = child.accept(CondDeltaVisitor(), args, index_in)
-                child_x_out += child.accept(AuxCondDeltaVisitor(), args, child_x_out, index_in)
+                child_x_out, child_weight = get_cond_delta(child, args, index_in)
                 child_x_out += args.uncond
             index_offset = index_out + len(sliced_x_out)
             sliced_x_out.append(child_x_out)
-            sliced_cond_indices.append((index_offset, child.weight))
+            sliced_cond_indices.append((index_offset, child_weight))
 
         index_in += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
@@ -127,9 +133,8 @@ class CondDeltaVisitor:
 
         for child in that.children:
             if child.conciliation is None:
-                child_cond_delta = child.accept(CondDeltaVisitor(), args, index)
-                child_cond_delta += child.accept(AuxCondDeltaVisitor(), args, child_cond_delta, index)
-                cond_delta += child.weight * child_cond_delta
+                child_cond_delta, child_weight = get_cond_delta(child, args, index)
+                cond_delta += child_weight * child_cond_delta
 
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
@@ -158,20 +163,59 @@ class AuxCondDeltaVisitor:
 
         for child in that.children:
             if child.conciliation is not None:
-                child_cond_delta = child.accept(CondDeltaVisitor(), args, index)
-                child_cond_delta += child.accept(AuxCondDeltaVisitor(), args, child_cond_delta, index)
+                child_cond_delta, child_weight = get_cond_delta(child, args, index)
 
                 if child.conciliation == neutral_prompt_parser.ConciliationStrategy.PERPENDICULAR:
-                    aux_cond_delta += child.weight * get_perpendicular_component(cond_delta, child_cond_delta)
+                    aux_cond_delta += child_weight * get_perpendicular_component(cond_delta, child_cond_delta)
                 elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SALIENCE_MASK:
-                    salient_cond_deltas.append((child_cond_delta, child.weight))
+                    salient_cond_deltas.append((child_cond_delta, child_weight))
                 elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SEMANTIC_GUIDANCE:
-                    aux_cond_delta += child.weight * filter_abs_top_k(child_cond_delta, 0.05)
+                    aux_cond_delta += child_weight * filter_abs_top_k(child_cond_delta, 0.05)
 
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
         aux_cond_delta += salient_blend(cond_delta, salient_cond_deltas)
         return aux_cond_delta
+
+
+def get_cond_delta(prompt: neutral_prompt_parser.PromptExpr, args: CombineDenoiseArgs, index: int) -> Tuple[torch.Tensor, Union[float, torch.Tensor]]:
+    cond_delta = prompt.accept(CondDeltaVisitor(), args, index)
+    cond_delta += prompt.accept(AuxCondDeltaVisitor(), args, cond_delta, index)
+    weight = prompt.weight
+
+    if prompt.local_transform is not None:
+        cond_delta, weight = apply_masked_transform(cond_delta, prompt.local_transform)
+        weight = weight
+
+    return cond_delta, weight
+
+
+def apply_masked_transform(tensor: torch.Tensor, affine: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    tensor_with_mask = torch.cat([tensor, create_cosine_feathered_mask(tensor.shape[-2:]).unsqueeze(0).to(tensor.device)])
+    transformed = apply_affine_transform(tensor_with_mask, affine)
+    return transformed[:-1], transformed[-1]
+
+
+def apply_affine_transform(tensor, affine):
+    affine = affine.clone().to(tensor.device)
+    aspect_ratio = tensor.shape[-2] / tensor.shape[-1]
+    affine[0, 1] *= aspect_ratio
+    affine[1, 0] /= aspect_ratio
+
+    grid = F.affine_grid(affine.unsqueeze(0), tensor.unsqueeze(0).size(), align_corners=False)
+    transformed_tensors = F.grid_sample(tensor.unsqueeze(0), grid, align_corners=False)
+    return transformed_tensors.squeeze(0)
+
+
+def create_cosine_feathered_mask(size):
+    """
+    Create a cosine-based feathered mask.
+    """
+    y, x = torch.meshgrid(torch.linspace(-1, 1, size[0]), torch.linspace(-1, 1, size[1]))
+    dist = torch.sqrt(x**2 + y**2)
+    mask = 0.5 * (1 + torch.cos(torch.pi * dist))
+    mask[dist > 1] = 0
+    return mask.float()
 
 
 def get_perpendicular_component(normal: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:

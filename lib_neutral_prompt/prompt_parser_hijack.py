@@ -47,3 +47,10 @@ class WebuiPromptVisitor:
 
     def visit_composite_prompt(self, that: neutral_prompt_parser.CompositePrompt) -> str:
         return ' AND '.join(child.accept(self) for child in that.children)
+
+
+@prompt_parser_hijacker.hijack("reconstruct_multicond_batch")
+def reconstruct_multicond_batch_hijack(*args, original_function, **kwargs):
+    res = original_function(*args, **kwargs)
+    global_state.batch_cond_indices = res[0]
+    return res

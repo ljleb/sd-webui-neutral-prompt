@@ -1,7 +1,13 @@
+import dataclasses
+
 from lib_neutral_prompt import global_state, hijacker, neutral_prompt_parser, prompt_parser_hijack, cfg_denoiser_hijack, ui, xyz_grid
-from modules import scripts, processing, shared
-from typing import Dict
+from modules import scripts, processing, shared, script_callbacks
+from typing import Dict, List, Tuple
+import torch
 import functools
+
+
+sampling_step = 0
 
 
 class NeutralPromptScript(scripts.Script):
@@ -41,6 +47,9 @@ class NeutralPromptScript(scripts.Script):
         self.update_global_state(args)
         if global_state.is_enabled:
             p.extra_generation_params.update(self.accordion_interface.get_extra_generation_params(args))
+
+        global sampling_step
+        sampling_step = 0
 
     def update_global_state(self, args: Dict):
         if shared.state.job_no == 0:
@@ -92,3 +101,77 @@ def composable_lora_process_hijack(p: processing.StableDiffusionProcessing, *arg
 
 
 xyz_grid.patch()
+
+
+@dataclasses.dataclass
+class CombinePreNoiseArgs:
+    x_out: torch.Tensor
+    cond_indices: List[Tuple[int, float]]
+
+
+noises = []
+
+
+def on_cfg_denoiser(params: script_callbacks.CFGDenoiserParams):
+    if not global_state.is_enabled:
+        return
+
+    global noises, sampling_step
+    sampling_step += 1
+    if sampling_step == 1:
+        noises = params.x.clone()
+        return
+
+    for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, global_state.batch_cond_indices)):
+        args = CombinePreNoiseArgs(params.x, cond_indices)
+        inv_transforms = prompt.accept(GlobalToLocalAffineVisitor(), args, 0)
+        for cond_index, weight in cond_indices:
+            # noisy_component = noises[cond_index] * torch.sum(noises[cond_index] * params.x[cond_index]) / torch.norm(noises[cond_index]) ** 2
+            # params.x[cond_index] = apply_affine_transform(params.x[cond_index] - noisy_component, inv_transforms[cond_index]) + noisy_component
+            params.x[cond_index] = apply_affine_transform(params.x[cond_index], inv_transforms[cond_index])
+
+
+script_callbacks.on_cfg_denoiser(on_cfg_denoiser)
+
+
+class GlobalToLocalAffineVisitor:
+    def visit_leaf_prompt(
+        self,
+        that: neutral_prompt_parser.LeafPrompt,
+        args: CombinePreNoiseArgs,
+        index: int,
+    ) -> Dict[int, torch.Tensor]:
+        cond_index = args.cond_indices[index][0]
+        transform = torch.linalg.inv(torch.vstack([that.local_transform, torch.tensor([0, 0, 1])]))[:-1] if that.local_transform is not None else torch.eye(3)[:-1]
+        return {cond_index: transform}
+
+    def visit_composite_prompt(
+        self,
+        that: neutral_prompt_parser.CompositePrompt,
+        args: CombinePreNoiseArgs,
+        index: int,
+    ) -> Dict[int, torch.Tensor]:
+        inv_transforms = {}
+
+        for child in that.children:
+            inv_transforms.update(child.accept(GlobalToLocalAffineVisitor(), args, index))
+            index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
+
+        if that.local_transform is not None:
+            that_inv_transform = torch.linalg.inv(torch.vstack([that.local_transform, torch.tensor([0, 0, 1])]))
+            for inv_transform in inv_transforms.values():
+                inv_transform[:] = that_inv_transform @ inv_transform
+
+        return inv_transforms
+
+
+import torch.nn.functional as F
+def apply_affine_transform(tensor, affine):
+    affine = affine.to(tensor.device)
+    aspect_ratio = tensor.shape[-2] / tensor.shape[-1]
+    affine[0, 1] *= aspect_ratio
+    affine[1, 0] /= aspect_ratio
+
+    grid = F.affine_grid(affine.unsqueeze(0), tensor.unsqueeze(0).size(), align_corners=False)
+    transformed_tensors = F.grid_sample(tensor.unsqueeze(0), grid, align_corners=False)
+    return transformed_tensors.squeeze(0)
