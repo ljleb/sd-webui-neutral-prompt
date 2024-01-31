@@ -158,6 +158,7 @@ class AuxCondDeltaVisitor:
         aux_cond_delta = torch.zeros_like(args.x_out[0])
         salient_cond_deltas = []
         align_blend_cond_deltas = []
+        mask_align_blend_cond_deltas = []
 
         for child in that.children:
             if child.conciliation is not None:
@@ -175,11 +176,16 @@ class AuxCondDeltaVisitor:
                     if match:
                         detail_size, structure_size = int(match.group(1)), int(match.group(2))
                         align_blend_cond_deltas.append((child_cond_delta, child.weight, detail_size, structure_size))
+                    match = re.match(r'AND_MASK_ALIGN_(\d+)_(\d+)', child.conciliation.value)
+                    if match:
+                        detail_size, structure_size = int(match.group(1)), int(match.group(2))
+                        mask_align_blend_cond_deltas.append((child_cond_delta, child.weight, detail_size, structure_size))
 
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
         aux_cond_delta += salient_blend(cond_delta, salient_cond_deltas)
         aux_cond_delta += alignment_blend(cond_delta, align_blend_cond_deltas)
+        aux_cond_delta += alignment_mask_blend(cond_delta, mask_align_blend_cond_deltas)
         return aux_cond_delta
 
 
@@ -321,6 +327,46 @@ def alignment_blend(parent: torch.Tensor,
 
         # Blend the child into the parent using the computed weight and alignment weight
         result += (child - parent) * weight * alignment_weight
+
+    return result
+
+
+def alignment_mask_blend(parent: torch.Tensor,
+                   children: list[tuple[torch.Tensor, float, int, int]]) -> torch.Tensor:
+    """
+    Perform a locally weighted blend of parent and multiple children by comparing subregion similarity maps.
+    For each child, two subregion similarity maps are computed against parent, using detail and structure scales.
+    The child receives increased local weight when subregion structure alignment is relatively higher than subregion
+    detail alignment; in other words, when the child can alter the details of the parent, without breaking the
+    structure of the composition.
+
+    :param parent: Latent score vector for the parent prompt. Shape: [C, H, W]
+    :param children: List of tuples (child_vector, weight, detail_radius, structure_radius).
+                                    child_vector is a latent gradient flow vector.
+                                    weight is a global weight for that gradient flow.
+                                    detail_radius is a kernel radius for detecting new details added by the child.
+                                    structure_radius is a kernel radius for detecting when the added details are structure preserving.
+
+    :return: Cond delta from parent latent gradient flow vector to alignment blended latent gradient flow vector. Shape: [C, H, W]
+    """
+    result = torch.zeros_like(parent)
+
+    # loop over children, blending each into parent gradient flow
+    for child, weight, detail_size, structure_size in children:
+        detail_alignment = compute_subregion_similarity_map(child, parent, region_size=detail_size)
+        structure_alignment = compute_subregion_similarity_map(child, parent, region_size=structure_size)
+
+        detail_alignment = detail_alignment / detail_alignment.max()
+        structure_alignment = structure_alignment / structure_alignment.max()
+
+        # Compute alignment_mask as binary mask of structure-to-detail alignment difference.
+        # This is 1.0 when child flow changes detail but preserves parent structure,
+        # and 0.0 when detail changes are not worth structural cost.
+
+        alignment_mask = (structure_alignment > detail_alignment).to(child)
+
+        # Blend the child into the parent using the computed weight and alignment mask
+        result += (child - parent) * weight * alignment_mask
 
     return result
 

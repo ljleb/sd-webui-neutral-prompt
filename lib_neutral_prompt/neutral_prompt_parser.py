@@ -10,8 +10,11 @@ keyword_mapping = {
     'AND_PERP': 'PERPENDICULAR',
     'AND_SALT': 'SALIENCE_MASK',
     'AND_TOPK': 'SEMANTIC_GUIDANCE',
-} | { f'AND_ALIGN_{i}_{j}':f'ALIGNMENT_BLEND_{i}_{j}' for i, j in product(range(2, 33), repeat=2) if i != j }
-
+} | {
+  f'AND_ALIGN_{i}_{j}':f'ALIGNMENT_BLEND_{i}_{j}' for i, j in product(range(2, 33), repeat=2) if i != j
+} | {
+  f'AND_MASK_ALIGN_{i}_{j}':f'ALIGNMENT_MASK_BLEND_{i}_{j}' for i, j in product(range(2, 33), repeat=2) if i != j
+}
 
 PromptKeyword = Enum('PromptKeyword', { key:key for key in ['AND'] + list(keyword_mapping.keys()) })
 ConciliationStrategy = Enum('ConciliationStrategy', { val:key for (key, val) in keyword_mapping.items() })
