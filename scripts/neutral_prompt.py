@@ -7,9 +7,6 @@ import torch
 import functools
 
 
-sampling_step = 0
-
-
 class NeutralPromptScript(scripts.Script):
     def __init__(self):
         self.accordion_interface = None
@@ -109,25 +106,14 @@ class CombinePreNoiseArgs:
     cond_indices: List[Tuple[int, float]]
 
 
-noises = []
-
-
 def on_cfg_denoiser(params: script_callbacks.CFGDenoiserParams):
     if not global_state.is_enabled:
         return
 
-    global noises, sampling_step
-    sampling_step += 1
-    if sampling_step == 1:
-        noises = params.x.clone()
-        return
-
-    for batch_i, (prompt, cond_indices) in enumerate(zip(global_state.prompt_exprs, global_state.batch_cond_indices)):
+    for prompt, cond_indices in zip(global_state.prompt_exprs, global_state.batch_cond_indices):
         args = CombinePreNoiseArgs(params.x, cond_indices)
         inv_transforms = prompt.accept(GlobalToLocalAffineVisitor(), args, 0)
-        for cond_index, weight in cond_indices:
-            # noisy_component = noises[cond_index] * torch.sum(noises[cond_index] * params.x[cond_index]) / torch.norm(noises[cond_index]) ** 2
-            # params.x[cond_index] = apply_affine_transform(params.x[cond_index] - noisy_component, inv_transforms[cond_index]) + noisy_component
+        for cond_index, _ in cond_indices:
             params.x[cond_index] = apply_affine_transform(params.x[cond_index], inv_transforms[cond_index])
 
 
