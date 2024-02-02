@@ -84,7 +84,7 @@ def gather_webui_conds(
     for child in prompt.children:
         if child.conciliation is None:
             if isinstance(child, neutral_prompt_parser.LeafPrompt):
-                child_x_out = args.x_out[index_in]
+                child_x_out = args.x_out[args.cond_indices[index_in][0]]
             else:
                 child_x_out = child.accept(CondDeltaVisitor(), args, index_in)
                 child_x_out += child.accept(AuxCondDeltaVisitor(), args, child_x_out, index_in)
