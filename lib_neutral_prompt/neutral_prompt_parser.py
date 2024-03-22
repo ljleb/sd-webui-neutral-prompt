@@ -3,24 +3,24 @@ import dataclasses
 import re
 from enum import Enum
 from typing import List, Tuple, Any, Optional
+from itertools import product
 
 
-class PromptKeyword(Enum):
-    AND = 'AND'
-    AND_PERP = 'AND_PERP'
-    AND_SALT = 'AND_SALT'
-    AND_TOPK = 'AND_TOPK'
+keyword_mapping = {
+    'AND_PERP': 'PERPENDICULAR',
+    'AND_SALT': 'SALIENCE_MASK',
+    'AND_TOPK': 'SEMANTIC_GUIDANCE',
+} | {
+  f'AND_ALIGN_{i}_{j}':f'ALIGNMENT_BLEND_{i}_{j}' for i, j in product(range(2, 33), repeat=2) if i != j
+} | {
+  f'AND_MASK_ALIGN_{i}_{j}':f'ALIGNMENT_MASK_BLEND_{i}_{j}' for i, j in product(range(2, 33), repeat=2) if i != j
+}
+
+PromptKeyword = Enum('PromptKeyword', { key:key for key in ['AND'] + list(keyword_mapping.keys()) })
+ConciliationStrategy = Enum('ConciliationStrategy', { val:key for (key, val) in keyword_mapping.items() })
 
 
 prompt_keywords = [e.value for e in PromptKeyword]
-
-
-class ConciliationStrategy(Enum):
-    PERPENDICULAR = PromptKeyword.AND_PERP.value
-    SALIENCE_MASK = PromptKeyword.AND_SALT.value
-    SEMANTIC_GUIDANCE = PromptKeyword.AND_TOPK.value
-
-
 conciliation_strategies = [e.value for e in ConciliationStrategy]
 
 

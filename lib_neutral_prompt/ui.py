@@ -1,6 +1,7 @@
 from lib_neutral_prompt import global_state, neutral_prompt_parser
 from modules import script_callbacks, shared
 from typing import Dict, Tuple, List, Callable
+from itertools import product
 import gradio as gr
 import dataclasses
 
@@ -19,8 +20,12 @@ prompt_types_tooltip = '\n'.join([
     'Perpendicular - reduce the impact of contradicting prompt features',
     'Saliency-aware - strongest prompt features win',
     'Semantic guidance top-k - small targeted changes',
+    'AND_ALIGN_D_S - blend new details with resolution DxD, preserving structure with resolution SxS',
 ])
 
+for (i, j) in ( (i, j) for (i, j) in product(range(2, 33), repeat=2) if i != j ):
+    prompt_key = f'Local alignment blend with detail kernel size {i} and structure kernel size {j}'
+    prompt_types[prompt_key] = getattr(neutral_prompt_parser.PromptKeyword, f'AND_ALIGN_{i}_{j}').value
 
 @dataclasses.dataclass
 class AccordionInterface:

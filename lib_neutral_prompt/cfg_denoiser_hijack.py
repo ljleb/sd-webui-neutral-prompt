@@ -4,8 +4,10 @@ from typing import Tuple, List
 import dataclasses
 import functools
 import torch
+import torch.nn.functional as F
 import sys
 import textwrap
+import re
 
 
 def combine_denoised_hijack(
@@ -155,6 +157,8 @@ class AuxCondDeltaVisitor:
     ) -> torch.Tensor:
         aux_cond_delta = torch.zeros_like(args.x_out[0])
         salient_cond_deltas = []
+        align_blend_cond_deltas = []
+        mask_align_blend_cond_deltas = []
 
         for child in that.children:
             if child.conciliation is not None:
@@ -167,10 +171,21 @@ class AuxCondDeltaVisitor:
                     salient_cond_deltas.append((child_cond_delta, child.weight))
                 elif child.conciliation == neutral_prompt_parser.ConciliationStrategy.SEMANTIC_GUIDANCE:
                     aux_cond_delta += child.weight * filter_abs_top_k(child_cond_delta, 0.05)
+                else:
+                    match = re.match(r'AND_ALIGN_(\d+)_(\d+)', child.conciliation.value)
+                    if match:
+                        detail_size, structure_size = int(match.group(1)), int(match.group(2))
+                        align_blend_cond_deltas.append((child_cond_delta, child.weight, detail_size, structure_size))
+                    match = re.match(r'AND_MASK_ALIGN_(\d+)_(\d+)', child.conciliation.value)
+                    if match:
+                        detail_size, structure_size = int(match.group(1)), int(match.group(2))
+                        mask_align_blend_cond_deltas.append((child_cond_delta, child.weight, detail_size, structure_size))
 
             index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
 
         aux_cond_delta += salient_blend(cond_delta, salient_cond_deltas)
+        aux_cond_delta += alignment_blend(cond_delta, align_blend_cond_deltas)
+        aux_cond_delta += alignment_mask_blend(cond_delta, mask_align_blend_cond_deltas)
         return aux_cond_delta
 
 
@@ -210,6 +225,150 @@ def filter_abs_top_k(vector: torch.Tensor, k_ratio: float) -> torch.Tensor:
     k = int(torch.numel(vector) * (1 - k_ratio))
     top_k, _ = torch.kthvalue(torch.abs(torch.flatten(vector)), k)
     return vector * (torch.abs(vector) >= top_k).to(vector.dtype)
+
+
+def compute_subregion_similarity_map(child_vector: torch.Tensor,
+                                     parent_vector: torch.Tensor,
+                                     region_size: int = 2) -> torch.Tensor:
+    """
+    Compute the local average cosine similarity of 2x2 subregions of RxR regions of parent and child diffusion gradients.
+
+    :param child_vector: Latent score vector for the child prompt. Shape: [C, H, W]
+    :param parent_vector: Latent score vector for the parent prompt. Shape: [C, H, W]
+    :param region_size: Size R of the local region. Default is 2.
+    :return: Local alignment map. Shape: [C, H, W]
+    """
+
+    C, H, W = child_vector.shape
+
+    # Step 1: Adjust input shape to include batch dimension. Shape: [1, C, H, W]
+    parent = parent_vector.unsqueeze(0)
+    child = child_vector.unsqueeze(0)
+
+    # Step 2: Extract local regions using Unfold and reshape.
+    # Apply symmetric padding for odd region size R, else use asymmetric padding when region size is even.
+    # This is necessary to ensure exactly H*W regions are unfolded. For example, when R=4, the tensors
+    # will be padded by 1 extra row of 0s to the top and to the left, and two extra rows of 0s to the
+    # bottom and to the right, ensuring we can extract exactly H*W regions of shape 4x4. The odd cases are
+    # easier because the kernels are centered on the original pixels; for example in 5x5 we just pad by two
+    # rows of extra 0s in all directions.
+    region_radius = region_size // 2
+
+    if region_size % 2 == 1:
+        pad_size = (region_radius,) * 4
+    else:
+        pad_size = (region_radius - 1, region_radius,) * 2
+
+    parent_regions = F.pad(parent, pad_size, "constant", 0)
+    child_regions = F.pad(child, pad_size, "constant", 0)
+    unfold = torch.nn.Unfold(kernel_size=region_size)
+    parent_regions = unfold(parent_regions)
+    child_regions = unfold(child_regions)
+
+    # Step 3: Separate channel dimension, move spatial dimension to batch dimension, separate region spatial dimensions
+    # The original spatial dimensions are treated as the new batch dimension, because we will later unfold a 2nd time
+    # over the newly created region spatial dimensions only to extract the 2x2 subregions. To prepare for this, we need the
+    # Shape to be [H*W, C, region_size, region_size]
+    parent_regions = parent_regions.view(1, C, region_size**2, H*W).permute(3, 1, 2, 0).view(H*W, C, region_size, region_size)
+    child_regions = child_regions.view(1, C, region_size**2, H*W).permute(3, 1, 2, 0).view(H*W, C, region_size, region_size)
+
+    # Step 4: Extract local 2x2 subregions from each region using Unfold. Do not pad regions when extracting subregions.
+    # Re-separate channel dimension from subregion spatial dimension after unfolding
+    # Shape: [H*W, C*4, (region_size - 1)**2] -> [H*W, C, 4, (region_size - 1)**2]
+    unfold = torch.nn.Unfold(kernel_size=2)
+    parent_subregions = unfold(parent_regions).view(H*W, C, 4, (region_size - 1)**2)
+    child_subregions = unfold(child_regions).view(H*W, C, 4, (region_size - 1)**2)
+
+    # Step 5: Normalize the subregions and compute cosine similarity
+    # Shape: [H*W, C, (region_size - 1)**2]
+    parent_subregions = F.normalize(parent_subregions, p=2, dim=2)
+    child_subregions = F.normalize(child_subregions, p=2, dim=2)
+    subregion_similarity_map = (parent_subregions * child_subregions).sum(dim=2)
+
+    # Step 6: Average subregion similarity per region and reshape back to original
+    # Shape: [H*W, C] -> [C, H*W] -> [C, H, W]
+    return subregion_similarity_map.mean(dim=2).permute(1, 0).view(C, H, W)
+
+
+def alignment_blend(parent: torch.Tensor,
+                   children: list[tuple[torch.Tensor, float, int, int]]) -> torch.Tensor:
+    """
+    Perform a locally weighted blend of parent and multiple children by comparing subregion similarity maps.
+    For each child, two subregion similarity maps are computed against parent, using detail and structure scales.
+    The child receives increased local weight when subregion structure alignment is relatively higher than subregion
+    detail alignment; in other words, when the child can alter the details of the parent, without breaking the
+    structure of the composition.
+
+    :param parent: Latent score vector for the parent prompt. Shape: [C, H, W]
+    :param children: List of tuples (child_vector, weight, detail_radius, structure_radius).
+                                    child_vector is a latent gradient flow vector.
+                                    weight is a global weight for that gradient flow.
+                                    detail_radius is a kernel radius for detecting new details added by the child.
+                                    structure_radius is a kernel radius for detecting when the added details are structure preserving.
+
+    :return: Cond delta from parent latent gradient flow vector to alignment blended latent gradient flow vector. Shape: [C, H, W]
+    """
+    result = torch.zeros_like(parent)
+
+    # loop over children, blending each into parent gradient flow
+    for child, weight, detail_size, structure_size in children:
+        detail_alignment = compute_subregion_similarity_map(child, parent, region_size=detail_size)
+        structure_alignment = compute_subregion_similarity_map(child, parent, region_size=structure_size)
+
+        detail_alignment = detail_alignment / detail_alignment.max()
+        structure_alignment = structure_alignment / structure_alignment.max()
+
+        # Compute alignment_weight as structure-to-detail alignment difference.
+        # This is higher when child flow changes detail but preserves parent structure.
+        # Clamping ensures the difference is in a valid range [0, 1]
+
+        alignment_weight = structure_alignment - detail_alignment
+        alignment_weight = torch.clamp(alignment_weight, min=0, max=1.0)
+
+        # Blend the child into the parent using the computed weight and alignment weight
+        result += (child - parent) * weight * alignment_weight
+
+    return result
+
+
+def alignment_mask_blend(parent: torch.Tensor,
+                   children: list[tuple[torch.Tensor, float, int, int]]) -> torch.Tensor:
+    """
+    Perform a locally weighted blend of parent and multiple children by comparing subregion similarity maps.
+    For each child, two subregion similarity maps are computed against parent, using detail and structure scales.
+    The child receives increased local weight when subregion structure alignment is relatively higher than subregion
+    detail alignment; in other words, when the child can alter the details of the parent, without breaking the
+    structure of the composition.
+
+    :param parent: Latent score vector for the parent prompt. Shape: [C, H, W]
+    :param children: List of tuples (child_vector, weight, detail_radius, structure_radius).
+                                    child_vector is a latent gradient flow vector.
+                                    weight is a global weight for that gradient flow.
+                                    detail_radius is a kernel radius for detecting new details added by the child.
+                                    structure_radius is a kernel radius for detecting when the added details are structure preserving.
+
+    :return: Cond delta from parent latent gradient flow vector to alignment blended latent gradient flow vector. Shape: [C, H, W]
+    """
+    result = torch.zeros_like(parent)
+
+    # loop over children, blending each into parent gradient flow
+    for child, weight, detail_size, structure_size in children:
+        detail_alignment = compute_subregion_similarity_map(child, parent, region_size=detail_size)
+        structure_alignment = compute_subregion_similarity_map(child, parent, region_size=structure_size)
+
+        detail_alignment = detail_alignment / detail_alignment.max()
+        structure_alignment = structure_alignment / structure_alignment.max()
+
+        # Compute alignment_mask as binary mask of structure-to-detail alignment difference.
+        # This is 1.0 when child flow changes detail but preserves parent structure,
+        # and 0.0 when detail changes are not worth structural cost.
+
+        alignment_mask = (structure_alignment > detail_alignment).to(child)
+
+        # Blend the child into the parent using the computed weight and alignment mask
+        result += (child - parent) * weight * alignment_mask
+
+    return result
 
 
 sd_samplers_hijacker = hijacker.ModuleHijacker.install_or_get(
