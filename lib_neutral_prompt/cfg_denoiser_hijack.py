@@ -220,6 +220,7 @@ except ImportError:
 
 
 if forge:
+    from ldm_patched.modules.conds import CONDRegular
     from ldm_patched.modules.samplers import sampling_function
 
     forge_sampler_hijacker = hijacker.ModuleHijacker.install_or_get(
@@ -274,7 +275,6 @@ if forge:
             denoised.append(result)
 
         cond_indices = cond_composition[0]
-        prompt = global_state.prompt_exprs[0]
 
         # B, C, H, W
         denoised_uncond = denoised[-1]
@@ -283,16 +283,16 @@ if forge:
         denoised_conds = torch.stack(denoised[:-1], dim=0)
 
         # N, 1, 1, 1, 1
-        weights = torch.tensor([ weight for (_, weight) in cond_indices ], device=denoised_uncond.device)
+        weights = torch.tensor([weight for (_, weight) in cond_indices], device=denoised_uncond.device)
         weights /= weights.abs().sum()
         weights = weights.view(-1, 1, 1, 1, 1)
 
         # B, C, H, W
-        assert denoised_conds.shape[0] == weights.shape[0]
         denoised_cond = (denoised_conds * weights).sum(dim=0)
         forge_denoised = denoised_uncond + (denoised_cond - denoised_uncond) * cond_scale
 
         for batch_i in range(denoised_uncond.shape[0]):
+            prompt = global_state.prompt_exprs[batch_i]
             args = CombineDenoiseArgs(denoised_conds.unbind(dim=1)[batch_i], denoised_uncond[batch_i], cond_indices)
             cond_delta = prompt.accept(CondDeltaVisitor(), args, 0)
             aux_cond_delta = prompt.accept(AuxCondDeltaVisitor(), args, cond_delta, 0)
