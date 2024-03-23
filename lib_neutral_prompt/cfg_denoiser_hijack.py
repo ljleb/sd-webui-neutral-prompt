@@ -296,8 +296,7 @@ if forge:
             args = CombineDenoiseArgs(denoised_conds.unbind(dim=1)[batch_i], denoised_uncond[batch_i], cond_indices)
             cond_delta = prompt.accept(CondDeltaVisitor(), args, 0)
             aux_cond_delta = prompt.accept(AuxCondDeltaVisitor(), args, cond_delta, 0)
-            cfg_cond = forge_denoised[batch_i] + aux_cond_delta * cond_scale
-            forge_denoised[batch_i] = cfg_rescale(cfg_cond, denoised_uncond[batch_i] + cond_delta + aux_cond_delta)
+            forge_denoised[batch_i] += aux_cond_delta * cond_scale
 
         return forge_denoised
 
