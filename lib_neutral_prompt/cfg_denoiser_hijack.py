@@ -213,6 +213,7 @@ def filter_abs_top_k(vector: torch.Tensor, k_ratio: float) -> torch.Tensor:
 
 
 try:
+    from ldm_patched.modules import samplers
     from modules_forge import forge_sampler
     forge = True
 except ImportError:
@@ -220,85 +221,75 @@ except ImportError:
 
 
 if forge:
-    from ldm_patched.modules.conds import CONDRegular
-    from ldm_patched.modules.samplers import sampling_function
-
     forge_sampler_hijacker = hijacker.ModuleHijacker.install_or_get(
         module=forge_sampler,
         hijacker_attribute='__forge_sample_hijacker',
         on_uninstall=script_callbacks.on_script_unloaded,
     )
 
+    ldm_patched_modules_hijacker = hijacker.ModuleHijacker.install_or_get(
+        module=samplers,
+        hijacker_attribute='__ldm_patched_modules_hijacker',
+        on_uninstall=script_callbacks.on_script_unloaded,
+    )
+
+
     @forge_sampler_hijacker.hijack('forge_sample')
     def forge_sample(self, denoiser_params, cond_scale, cond_composition, original_function):
         if not global_state.is_enabled:
             return original_function(self, denoiser_params, cond_scale, cond_composition)
 
-        model = self.inner_model.inner_model.forge_objects.unet.model
-        control = self.inner_model.inner_model.forge_objects.unet.controlnet_linked_list
-        extra_concat_condition = self.inner_model.inner_model.forge_objects.unet.extra_concat_condition
-        x = denoiser_params.x
-        timestep = denoiser_params.sigma
-        model_options = self.inner_model.inner_model.forge_objects.unet.model_options
-        seed = self.p.seeds[0]
+        self.inner_model.inner_model.forge_objects.unet.model_options['cond_composition'] = cond_composition
+        return original_function(self, denoiser_params, cond_scale, cond_composition)
 
-        uncond = forge_sampler.cond_from_a1111_to_patched_ldm(denoiser_params.text_uncond)
-        conds = forge_sampler.cond_from_a1111_to_patched_ldm_weighted(denoiser_params.text_cond, cond_composition)
-        conds += uncond
+    @ldm_patched_modules_hijacker.hijack('samplers')
+    def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options, original_function):
+        if not global_state.is_enabled:
+            return original_function(model, cond, uncond, x_in, timestep, model_options)
 
-        denoised = []
+        cond_composition = model_options['cond_composition']
 
-        for current_cond in conds:
-            cond = [current_cond]
-            cond[0]['strength'] = 1.0
+        cond.extend(uncond)
+        discard_last = (len(cond) % 2) == 1
+        if discard_last:
+            cond.append(cond[0])
 
-            if extra_concat_condition is not None:
-                image_cond_in = extra_concat_condition
-            else:
-                image_cond_in = denoiser_params.image_cond
+        weights = []
+        for elem in cond:
+            weights.append((elem['strength'] if 'strength' in elem else 1.0))
+            elem['strength'] = 1.0
 
-            if isinstance(image_cond_in, torch.Tensor):
-                if image_cond_in.shape[0] == x.shape[0] \
-                        and image_cond_in.shape[2] == x.shape[2] \
-                        and image_cond_in.shape[3] == x.shape[3]:
-                    cond[0]['model_conds']['c_concat'] = CONDRegular(image_cond_in)
+        denoised_latents = []
+        cond_it = iter(cond)
+        for first_cond, second_cond in zip(cond_it, cond_it):
+            first_latent, second_latent = original_function(model, first_cond, second_cond, x_in, timestep, model_options)
+            denoised_latents.extend([first_latent, second_latent])
 
-            if control is not None:
-                cond[0]['control'] = control
-
-            for modifier in model_options.get('conditioning_modifiers', []):
-                model, x, timestep, _, cond, cond_scale, model_options, seed = modifier(model, x, timestep, None, cond, cond_scale, model_options, seed)
-
-            model_options["disable_cfg1_optimization"] = True
-
-            result = sampling_function(model, x, timestep, None, cond, 1.0, model_options, seed)
-            denoised.append(result)
-
-        cond_indices = cond_composition[0]
+        if discard_last:
+            denoised_latents = denoised_latents[:-1]
+            weights = weights[:-1]
 
         # B, C, H, W
-        denoised_uncond = denoised[-1]
+        denoised_uncond = denoised_latents[-1]
 
         # N, B, C, H, W
         denoised_conds = torch.stack(denoised[:-1], dim=0)
 
         # N, 1, 1, 1, 1
-        weights = torch.tensor([weight for (_, weight) in cond_indices], device=denoised_uncond.device)
-        weights /= weights.abs().sum()
-        weights = weights.view(-1, 1, 1, 1, 1)
+        weights = torch.tensor(weights, device=denoised_uncond.device).view(-1, 1, 1, 1, 1)
 
         # B, C, H, W
         denoised_cond = (denoised_conds * weights).sum(dim=0)
-        forge_denoised = denoised_uncond + (denoised_cond - denoised_uncond) * cond_scale
+        denoised_cond = denoised_uncond + (denoised_cond - denoised_uncond) * cond_scale
 
         for batch_i in range(denoised_uncond.shape[0]):
             prompt = global_state.prompt_exprs[batch_i]
-            args = CombineDenoiseArgs(denoised_conds.unbind(dim=1)[batch_i], denoised_uncond[batch_i], cond_indices)
+            args = CombineDenoiseArgs(denoised_conds.unbind(dim=1)[batch_i], denoised_uncond[batch_i], cond_composition[batch_i])
             cond_delta = prompt.accept(CondDeltaVisitor(), args, 0)
             aux_cond_delta = prompt.accept(AuxCondDeltaVisitor(), args, cond_delta, 0)
-            forge_denoised[batch_i] += aux_cond_delta * cond_scale
+            denoised_cond[batch_i] += aux_cond_delta * cond_scale
 
-        return forge_denoised
+        return denoised_cond, denoised_uncond
 
 
 else:
