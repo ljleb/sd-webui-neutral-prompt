@@ -255,8 +255,8 @@ if forge:
         uncond = model_options['uncond']
 
         cond.extend(uncond)
-        remove_last_cond = (len(cond) % 2) == 1
-        if remove_last_cond:
+        discard_last = (len(cond) % 2) == 1
+        if discard_last:
             cond.append(cond[-1])
 
         for elem in cond:
@@ -268,7 +268,7 @@ if forge:
             for denoised in original_function(model, [first_cond], [second_cond], x_in, timestep, model_options)
         ]
 
-        if remove_last_cond:
+        if discard_last:
             denoised_latents = denoised_latents[:-1]
 
         # B, C, H, W
