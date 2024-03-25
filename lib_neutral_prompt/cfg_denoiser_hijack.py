@@ -51,8 +51,7 @@ def get_webui_denoised(
             sliced_batch_cond_indices.append(sliced_cond_indices)
         sliced_batch_x_out.extend(sliced_x_out)
 
-    sliced_batch_x_out += list(uncond)
-    sliced_batch_x_out = torch.stack(sliced_batch_x_out, dim=0)
+    sliced_batch_x_out = torch.stack(sliced_batch_x_out + list(uncond), dim=0)
     return original_function(sliced_batch_x_out, sliced_batch_cond_indices, text_uncond, cond_scale)
 
 
@@ -209,9 +208,9 @@ def get_salience(vector: torch.Tensor) -> torch.Tensor:
 
 
 def filter_abs_top_k(vector: torch.Tensor, k_ratio: float) -> torch.Tensor:
-    k = int(torch.numel(vector) * (1 - k_ratio))
+    k = int(vector.numel() * (1 - k_ratio))
     top_k, _ = torch.kthvalue(torch.abs(torch.flatten(vector)), k)
-    return vector * (torch.abs(vector) >= top_k).to(vector.dtype)
+    return vector * (vector.abs() >= top_k).to(vector.dtype)
 
 
 try:
@@ -246,21 +245,74 @@ if forge:
         return original_function(self, denoiser_params, cond_scale, cond_composition)
 
 
+    def sampling_function_hijack(model, x, timestep, uncond, cond, cond_scale, model_options, seed, original_function):
+        if not global_state.is_enabled or not global_state.prompt_exprs:
+            return original_function(model, x, timestep, uncond, cond, cond_scale, model_options, seed)
+
+        prompt = global_state.prompt_exprs[0]
+        original_strengths, new_strengths = prompt.accept(ForgeStrengthTempOverride(), cond, 0)
+
+        model_options['original_strengths'] = original_strengths
+        return original_function(model, x, timestep, uncond, cond, cond_scale, model_options, seed)
+
+
+    class ForgeStrengthTempOverride:
+        def visit_leaf_prompt(
+            self,
+            that: neutral_prompt_parser.LeafPrompt,
+            cond: List[dict],
+            index: int,
+        ) -> tuple:
+            original_strength = cond[index].get('strength', 1.0)
+            new_strength = float(that.conciliation is None)
+            cond[index]['strength'] = new_strength
+            return [original_strength], [new_strength]
+
+        def visit_composite_prompt(
+            self,
+            that: neutral_prompt_parser.CompositePrompt,
+            cond: List[dict],
+            index: int,
+        ) -> tuple:
+            original_strengths = []
+            new_strengths = []
+
+            for child in that.children:
+                child_original_strengths, child_new_strengths = child.accept(ForgeStrengthTempOverride(), cond, index)
+                original_strengths.extend(child_original_strengths)
+                new_strengths.extend(child_new_strengths)
+
+                index += child.accept(neutral_prompt_parser.FlatSizeVisitor())
+
+            return original_strengths, new_strengths
+
+
+    samplers_hijacker.hijack('sampling_function')(sampling_function_hijack)
+    forge_sampler_hijacker.hijack('sampling_function')(sampling_function_hijack)
+
+
     @samplers_hijacker.hijack('calc_cond_uncond_batch')
     def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options, original_function):
         if not global_state.is_enabled:
             return original_function(model, cond, uncond, x_in, timestep, model_options)
 
         cond_composition = model_options['cond_composition']
-        uncond = model_options['uncond']
+        original_strengths = model_options['original_strengths']
+        if uncond is None:
+            uncond = model_options['uncond']
 
+        for i in range(len(cond)):
+            cond[i]['strength'] = original_strengths[i]
+
+        cond = cond.copy()
         cond.extend(uncond)
         discard_last = (len(cond) % 2) == 1
         if discard_last:
             cond.append(cond[-1])
 
-        for elem in cond:
-            elem['strength'] = 1.0
+        for i in range(len(cond)):
+            cond[i] = cond[i].copy()
+            cond[i]['strength'] = 1.0
 
         denoised_latents = [
             denoised
