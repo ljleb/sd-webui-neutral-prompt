@@ -250,21 +250,22 @@ if forge:
             return original_function(model, x, timestep, uncond, cond, cond_scale, model_options, seed)
 
         prompt = global_state.prompt_exprs[0]
-        original_strengths, new_strengths = prompt.accept(ForgeStrengthTempOverride(), cond, 0)
+        original_strengths, new_strengths = prompt.accept(ForgeStrengthOverride(), cond, 0, False)
 
         model_options['original_strengths'] = original_strengths
         return original_function(model, x, timestep, uncond, cond, cond_scale, model_options, seed)
 
 
-    class ForgeStrengthTempOverride:
+    class ForgeStrengthOverride:
         def visit_leaf_prompt(
             self,
             that: neutral_prompt_parser.LeafPrompt,
             cond: List[dict],
             index: int,
+            is_parent_aux: bool,
         ) -> tuple:
             original_strength = cond[index].get('strength', 1.0)
-            new_strength = float(that.conciliation is None)
+            new_strength = original_strength * float(not is_parent_aux and that.conciliation is None)
             cond[index]['strength'] = new_strength
             return [original_strength], [new_strength]
 
@@ -273,12 +274,13 @@ if forge:
             that: neutral_prompt_parser.CompositePrompt,
             cond: List[dict],
             index: int,
+            is_parent_aux: bool,
         ) -> tuple:
             original_strengths = []
             new_strengths = []
 
             for child in that.children:
-                child_original_strengths, child_new_strengths = child.accept(ForgeStrengthTempOverride(), cond, index)
+                child_original_strengths, child_new_strengths = child.accept(ForgeStrengthOverride(), cond, index, is_parent_aux or that.conciliation is not None)
                 original_strengths.extend(child_original_strengths)
                 new_strengths.extend(child_new_strengths)
 
