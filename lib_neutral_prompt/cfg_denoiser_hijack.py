@@ -295,13 +295,16 @@ if forge:
 
     @samplers_hijacker.hijack('calc_cond_uncond_batch')
     def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options, original_function):
-        if not global_state.is_enabled:
+        try:
+            cond_composition = model_options['cond_composition']
+            original_strengths = model_options['original_strengths']
+            del model_options['cond_composition']
+            del model_options['original_strengths']
+            if uncond is None:
+                uncond = model_options['uncond']
+                del model_options['uncond']
+        except KeyError:
             return original_function(model, cond, uncond, x_in, timestep, model_options)
-
-        cond_composition = model_options['cond_composition']
-        original_strengths = model_options['original_strengths']
-        if uncond is None:
-            uncond = model_options['uncond']
 
         for i in range(len(cond)):
             cond[i]['strength'] = original_strengths[i]
