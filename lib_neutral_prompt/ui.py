@@ -4,6 +4,14 @@ from typing import Dict, Tuple, List, Callable
 import gradio as gr
 import dataclasses
 
+try:
+    # import a forge-specific module
+    from modules_forge import forge_sampler
+    del forge_sampler
+    forge = True
+except ImportError:
+    forge = False
+
 
 txt2img_prompt_textbox = None
 img2img_prompt_textbox = None
@@ -29,7 +37,7 @@ class AccordionInterface:
     def __post_init__(self):
         self.is_rendered = False
 
-        self.cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0)
+        self.cfg_rescale = gr.Slider(label='CFG rescale', minimum=0, maximum=1, value=0, visible=not forge, interactive=not forge)
         self.neutral_prompt = gr.Textbox(label='Neutral prompt', show_label=False, lines=3, placeholder='Neutral prompt (click on apply below to append this to the positive prompt textbox)')
         self.neutral_cond_scale = gr.Slider(label='Prompt weight', minimum=-3, maximum=3, value=1)
         self.aux_prompt_type = gr.Dropdown(label='Prompt type', choices=list(prompt_types.keys()), value=next(iter(prompt_types.keys())), tooltip=prompt_types_tooltip, elem_id=self.get_elem_id('formatter_prompt_type'))
