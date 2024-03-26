@@ -252,6 +252,7 @@ if forge:
         prompt = global_state.prompt_exprs[0]
         original_strengths, new_strengths = prompt.accept(ForgeStrengthOverride(), cond, 0, False)
 
+        model_options['neutral_prompt_override'] = True
         model_options['original_strengths'] = original_strengths
         return original_function(model, x, timestep, uncond, cond, cond_scale, model_options, seed)
 
@@ -295,7 +296,7 @@ if forge:
 
     @samplers_hijacker.hijack('calc_cond_uncond_batch')
     def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options, original_function):
-        if not global_state.is_enabled:
+        if not global_state.is_enabled or not 'neutral_prompt_override' in model_options.keys():
             return original_function(model, cond, uncond, x_in, timestep, model_options)
 
         cond_composition = model_options['cond_composition']
@@ -340,6 +341,10 @@ if forge:
             cond_delta = prompt.accept(CondDeltaVisitor(), args, 0)
             aux_cond_delta = prompt.accept(AuxCondDeltaVisitor(), args, cond_delta, 0)
             denoised_cond[batch_i] += cond_delta + aux_cond_delta
+
+        # consume 'neutral_prompt_override' before returning, in case another extension calls the method
+        # outside of CFG sampling; for example: extensions-builtin/sd_forge_sag
+        del model_options['neutral_prompt_override']
 
         return denoised_cond, denoised_uncond
 else:
